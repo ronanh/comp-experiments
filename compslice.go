@@ -105,50 +105,50 @@ func (cs *CompressedSlice[T]) BlockMinMax(i int) (T, T) {
 	panic("invalid block index")
 }
 
-func (cs CompressedSlice[T]) Compress(dst []T) CompressedSlice[T] {
-	return cs.compress(dst, 0)
+func (cs CompressedSlice[T]) Compress(src []T) CompressedSlice[T] {
+	return cs.compress(src, 0)
 }
 
-func (cs CompressedSlice[T]) CompressLossy(dst []T, maxBits int) CompressedSlice[T] {
+func (cs CompressedSlice[T]) CompressLossy(src []T, maxBits int) CompressedSlice[T] {
 	minNtz := cs.fractionSize() - maxBits
 	if minNtz < 1 {
 		panic("maxBits too large")
 	}
-	return cs.compress(dst, minNtz)
+	return cs.compress(src, minNtz)
 }
 
-func (cs CompressedSlice[T]) compress(dst []T, minNtz int) CompressedSlice[T] {
+func (cs CompressedSlice[T]) compress(src []T, minNtz int) CompressedSlice[T] {
 	// Compute nbGroups:
 	// first block should have 1 group
 	// second block should have 2 groups
 	// third block should have 3 groups
 	// later blocks should have 4 groups
 	nbGroups := len(cs.blockOffsets)
-	for len(dst) > 0 {
+	for len(src) > 0 {
 		nbGroups++
 		if nbGroups > MaxGroups {
 			nbGroups = MaxGroups
 		}
 		if len(cs.tail) > 0 {
 			appendTailCount := groupSize*nbGroups - len(cs.tail)
-			if appendTailCount > len(dst) {
-				appendTailCount = len(dst)
+			if appendTailCount > len(src) {
+				appendTailCount = len(src)
 			}
-			cs.tail = append(cs.tail, dst[:appendTailCount]...)
-			dst = dst[appendTailCount:]
+			cs.tail = append(cs.tail, src[:appendTailCount]...)
+			src = src[appendTailCount:]
 			if len(cs.tail) == groupSize*nbGroups {
 				// tail is full, compress it
 				cs.compressBlock(cs.tail, minNtz)
 				cs.tail = nil
 			}
-		} else if len(dst) >= groupSize*nbGroups {
+		} else if len(src) >= groupSize*nbGroups {
 			// compress a full block
-			cs.compressBlock(dst[:groupSize*nbGroups], minNtz)
-			dst = dst[groupSize*nbGroups:]
+			cs.compressBlock(src[:groupSize*nbGroups], minNtz)
+			src = src[groupSize*nbGroups:]
 		} else {
 			// append to tail
-			cs.tail = append(cs.tail, dst...)
-			dst = nil
+			cs.tail = append(cs.tail, src...)
+			src = nil
 		}
 	}
 	return cs

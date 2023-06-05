@@ -102,10 +102,10 @@ func (cp *CompressedBytesSlice) BlockLen(i int) int {
 	return cp.offsets.BlockLen(i)
 }
 
-func (cs CompressedBytesSlice) Compress(dst [][]byte) CompressedBytesSlice {
-	newOffsets := make([]int, len(dst))
+func (cs CompressedBytesSlice) Compress(src [][]byte) CompressedBytesSlice {
+	newOffsets := make([]int, len(src))
 	curOffset := cs.lastOffset
-	for i, v := range dst {
+	for i, v := range src {
 		newOffsets[i] = curOffset
 		curOffset += len(v)
 	}
@@ -132,8 +132,8 @@ func (cs CompressedBytesSlice) Compress(dst [][]byte) CompressedBytesSlice {
 		}
 		blockLen := end - start
 		for len(cs.tail) < blockLen {
-			cs.tail = append(cs.tail, dst[0]...)
-			dst = dst[1:]
+			cs.tail = append(cs.tail, src[0]...)
+			src = src[1:]
 		}
 		if len(cs.tail) != blockLen {
 			panic("invalid tail length")
@@ -147,7 +147,7 @@ func (cs CompressedBytesSlice) Compress(dst [][]byte) CompressedBytesSlice {
 		}
 	}
 	// Add the remaining input to the tail
-	for _, v := range dst {
+	for _, v := range src {
 		cs.tail = append(cs.tail, v...)
 	}
 
