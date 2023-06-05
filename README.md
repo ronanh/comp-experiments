@@ -1,1 +1,3 @@
-# comp-experiments
+# compexperiments
+
+experiments around compression
