@@ -7,6 +7,21 @@ import (
 	"github.com/klauspost/compress/zstd"
 )
 
+type CompType byte
+
+const (
+	CompTypeIguana CompType = iota
+	CompTypeZstd
+)
+
+type CompLevel byte
+
+const (
+	CompLevelFastest CompLevel = iota
+	CompLevelDefault
+	CompLevelBest
+)
+
 type BytesSlice struct {
 	buf     []byte
 	offsets []int
@@ -58,7 +73,9 @@ type CompressedBytesSlice struct {
 	// offsets within concatenated bytes
 	offsets CompressedSlice[int]
 	// last offset for concatenated bytes
-	lastOffset int
+	lastOffset       int
+	Compression      CompType
+	CompressionLevel CompLevel
 }
 
 func (cs *CompressedBytesSlice) Len() int {
@@ -100,8 +117,7 @@ func (cs CompressedBytesSlice) Compress(dst [][]byte) CompressedBytesSlice {
 	firstCompressedBlock++
 
 	cs.offsets = cs.offsets.Compress(newOffsets)
-	enc := new(zstd.Encoder)
-	enc2 := new(iguana.Encoder)
+	enc, enc2 := cs.getEncoders()
 	originalTail := cs.tail
 	// Use sliceOffsets new compressed blocks to add the corresponding data blocks
 	blockCount := cs.offsets.BlockCount()
@@ -142,19 +158,24 @@ func (cp *CompressedBytesSlice) compressBlock(block []byte, enc *zstd.Encoder, e
 	// Compress offset block
 	cp.compressedBlockOffsets = append(cp.compressedBlockOffsets, len(cp.buf))
 	// compress data block
-	//cp.buf = enc.EncodeAll(block, cp.buf)
-	//cp.buf = s2.Encode(cp.buf, block)
 	var err error
-	cp.buf, err = enc2.Compress(block, cp.buf, 1.0)
+	switch cp.Compression {
+	case CompTypeZstd:
+		enc.Reset(nil)
+		cp.buf = enc.EncodeAll(block, cp.buf)
+	case CompTypeIguana:
+		cp.buf, err = enc2.Compress(block, cp.buf, iguana.DefaultANSThreshold)
+	}
 	if err != nil {
 		panic(err)
 	}
 }
 
 func (cs *CompressedBytesSlice) Decompress(dst BytesSlice) BytesSlice {
-	dec, _ := zstd.NewReader(nil)
-	defer dec.Close()
-	dec2 := new(iguana.Decoder)
+	dec, dec2 := cs.getDecoders()
+	if dec != nil {
+		defer dec.Close()
+	}
 
 	blockCount := cs.BlockCount()
 	for i := 0; i < blockCount; i++ {
@@ -164,10 +185,10 @@ func (cs *CompressedBytesSlice) Decompress(dst BytesSlice) BytesSlice {
 }
 
 func (cs *CompressedBytesSlice) DecompressBlock(dst BytesSlice, i int) (BytesSlice, int) {
-	dec, _ := zstd.NewReader(nil)
-	defer dec.Close()
-	dec2 := new(iguana.Decoder)
-
+	dec, dec2 := cs.getDecoders()
+	if dec != nil {
+		defer dec.Close()
+	}
 	return cs.decompressBlock(dst, i, dec, dec2)
 }
 
@@ -192,10 +213,12 @@ func (cs *CompressedBytesSlice) decompressBlock(dst BytesSlice, i int, dec *zstd
 			blockBuf = cs.buf[cs.compressedBlockOffsets[i]:]
 		}
 		var err error
-		//dst.buf, err = dec.DecodeAll(blockBuf, dst.buf)
-		//dst.buf, err = s2.Decode(dst.buf, blockBuf)
-		dst.buf, err = dec2.DecompressTo(dst.buf, blockBuf)
-
+		switch cs.Compression {
+		case CompTypeZstd:
+			dst.buf, err = dec.DecodeAll(blockBuf, dst.buf)
+		case CompTypeIguana:
+			dst.buf, err = dec2.DecompressTo(dst.buf, blockBuf)
+		}
 		if err != nil {
 			panic(err)
 		}
@@ -218,6 +241,36 @@ func (cs *CompressedBytesSlice) blockOffset(i int) int {
 	default:
 		return 64 + 128 + 192 + (i-3)*256
 	}
+}
+
+func (cs *CompressedBytesSlice) getEncoders() (*zstd.Encoder, *iguana.Encoder) {
+	switch cs.Compression {
+	case CompTypeZstd:
+		var level zstd.EncoderLevel
+		switch cs.CompressionLevel {
+		case CompLevelBest:
+			level = zstd.SpeedBestCompression
+		case CompLevelFastest:
+			level = zstd.SpeedFastest
+		}
+		enc, _ := zstd.NewWriter(nil, zstd.WithEncoderConcurrency(1), zstd.WithEncoderLevel(level))
+		return enc, nil
+	case CompTypeIguana:
+		enc := new(iguana.Encoder)
+		return nil, enc
+	}
+	return nil, nil
+}
+
+func (cs *CompressedBytesSlice) getDecoders() (*zstd.Decoder, *iguana.Decoder) {
+	switch cs.Compression {
+	case CompTypeZstd:
+		dec, _ := zstd.NewReader(nil, zstd.WithDecoderConcurrency(1))
+		return dec, nil
+	case CompTypeIguana:
+		return nil, new(iguana.Decoder)
+	}
+	return nil, nil
 }
 
 func sameSlice(x, y []byte) bool {

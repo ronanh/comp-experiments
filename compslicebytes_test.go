@@ -11,7 +11,9 @@ import (
 func TestCompressBytes(t *testing.T) {
 	testInput1, testInput2 := genTestInputs(1000), genTestInputs(1000)
 
-	var cs compexperiments.CompressedBytesSlice
+	cs := compexperiments.CompressedBytesSlice{
+		Compression: compexperiments.CompTypeIguana,
+	}
 
 	cs = cs.Compress(testInput1)
 	if cs.Len() != len(testInput1) {
