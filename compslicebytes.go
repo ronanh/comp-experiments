@@ -161,7 +161,6 @@ func (cp *CompressedBytesSlice) compressBlock(block []byte, enc *zstd.Encoder, e
 	var err error
 	switch cp.Compression {
 	case CompTypeZstd:
-		enc.Reset(nil)
 		cp.buf = enc.EncodeAll(block, cp.buf)
 	case CompTypeIguana:
 		cp.buf, err = enc2.Compress(block, cp.buf, iguana.DefaultANSThreshold)
