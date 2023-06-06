@@ -14,6 +14,17 @@ const (
 	CompTypeZstd
 )
 
+func (ct CompType) String() string {
+	switch ct {
+	case CompTypeIguana:
+		return "iguana"
+	case CompTypeZstd:
+		return "zstd"
+	default:
+		return "unknown"
+	}
+}
+
 type CompLevel byte
 
 const (
@@ -21,6 +32,19 @@ const (
 	CompLevelFastest
 	CompLevelBest
 )
+
+func (cl CompLevel) String() string {
+	switch cl {
+	case CompLevelDefault:
+		return "default"
+	case CompLevelFastest:
+		return "fastest"
+	case CompLevelBest:
+		return "best"
+	default:
+		return "unknown"
+	}
+}
 
 type BytesSlice struct {
 	buf     []byte
