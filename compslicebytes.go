@@ -1,49 +1,26 @@
 package compexperiments
 
 import (
+	"io"
 	"unsafe"
-
-	"github.com/SnellerInc/sneller/ion/zion/iguana"
-	"github.com/klauspost/compress/zstd"
 )
 
-type CompType byte
-
-const (
-	CompTypeZstd CompType = iota
-	CompTypeIguana
-)
-
-func (ct CompType) String() string {
-	switch ct {
-	case CompTypeIguana:
-		return "iguana"
-	case CompTypeZstd:
-		return "zstd"
-	default:
-		return "unknown"
-	}
+type zstdEncoder interface {
+	EncodeAll(src []byte, dst []byte) []byte
+	Flush() error
+	Reset(w io.Writer)
 }
 
-type CompLevel byte
+type zstdDecoder interface {
+	DecodeAll(input []byte, dst []byte) ([]byte, error)
+}
 
-const (
-	CompLevelDefault CompLevel = iota
-	CompLevelFastest
-	CompLevelBest
-)
+type iguanaEncoder interface {
+	Compress(src []byte, dst []byte, ansRejectionThreshold float32) ([]byte, error)
+}
 
-func (cl CompLevel) String() string {
-	switch cl {
-	case CompLevelDefault:
-		return "default"
-	case CompLevelFastest:
-		return "fastest"
-	case CompLevelBest:
-		return "best"
-	default:
-		return "unknown"
-	}
+type iguanaDecoder interface {
+	DecompressTo(src []byte, dst []byte) ([]byte, error)
 }
 
 type BytesSlice struct {
@@ -97,9 +74,7 @@ type CompressedBytesSlice struct {
 	// offsets within concatenated bytes
 	offsets CompressedSlice[int]
 	// last offset for concatenated bytes
-	lastOffset       int
-	Compression      CompType
-	CompressionLevel CompLevel
+	lastOffset int
 }
 
 func (cs *CompressedBytesSlice) Len() int {
@@ -126,7 +101,7 @@ func (cp *CompressedBytesSlice) BlockLen(i int) int {
 	return cp.offsets.BlockLen(i)
 }
 
-func (cs CompressedBytesSlice) Compress(src [][]byte) CompressedBytesSlice {
+func (cs CompressedBytesSlice) Compress(src [][]byte, encoder any) CompressedBytesSlice {
 	newOffsets := make([]int, len(src))
 	curOffset := cs.lastOffset
 	for i, v := range src {
@@ -141,7 +116,6 @@ func (cs CompressedBytesSlice) Compress(src [][]byte) CompressedBytesSlice {
 	firstCompressedBlock++
 
 	cs.offsets = cs.offsets.Compress(newOffsets)
-	enc, enc2 := cs.getEncoders()
 	originalTail := cs.tail
 	// Use sliceOffsets new compressed blocks to add the corresponding data blocks
 	blockCount := cs.offsets.BlockCount()
@@ -162,7 +136,7 @@ func (cs CompressedBytesSlice) Compress(src [][]byte) CompressedBytesSlice {
 		if len(cs.tail) != blockLen {
 			panic("invalid tail length")
 		}
-		cs.compressBlock(cs.tail, enc, enc2)
+		cs.compressBlock(cs.tail, encoder)
 		if len(originalTail) > 0 && sameSlice(cs.tail, originalTail) {
 			// we should not modify the original tail data
 			cs.tail = nil
@@ -178,45 +152,32 @@ func (cs CompressedBytesSlice) Compress(src [][]byte) CompressedBytesSlice {
 	return cs
 }
 
-func (cp *CompressedBytesSlice) compressBlock(block []byte, enc *zstd.Encoder, enc2 *iguana.Encoder) {
+func (cp *CompressedBytesSlice) compressBlock(block []byte, encoder any) {
 	// Compress offset block
 	cp.compressedBlockOffsets = append(cp.compressedBlockOffsets, len(cp.buf))
 	// compress data block
 	var err error
-	switch cp.Compression {
-	case CompTypeZstd:
+	if enc, ok := encoder.(zstdEncoder); ok {
 		cp.buf = enc.EncodeAll(block, cp.buf)
-	case CompTypeIguana:
-		cp.buf, err = enc2.Compress(block, cp.buf, iguana.DefaultANSThreshold)
+	} else if enc, ok := encoder.(iguanaEncoder); ok {
+		cp.buf, err = enc.Compress(block, cp.buf, 1.0)
+	} else {
+		panic("unknown encoder")
 	}
 	if err != nil {
 		panic(err)
 	}
 }
 
-func (cs *CompressedBytesSlice) Decompress(dst BytesSlice) BytesSlice {
-	dec, dec2 := cs.getDecoders()
-	if dec != nil {
-		defer dec.Close()
-	}
-
+func (cs *CompressedBytesSlice) Decompress(dst BytesSlice, decoder any) BytesSlice {
 	blockCount := cs.BlockCount()
 	for i := 0; i < blockCount; i++ {
-		dst, _ = cs.decompressBlock(dst, i, dec, dec2)
+		dst, _ = cs.DecompressBlock(dst, i, decoder)
 	}
 	return dst
 }
 
-func (cs *CompressedBytesSlice) DecompressBlock(dst BytesSlice, i int) (BytesSlice, int) {
-	dec, dec2 := cs.getDecoders()
-	if dec != nil {
-		defer dec.Close()
-	}
-	return cs.decompressBlock(dst, i, dec, dec2)
-}
-
-func (cs *CompressedBytesSlice) decompressBlock(dst BytesSlice, i int, dec *zstd.Decoder, dec2 *iguana.Decoder) (BytesSlice, int) {
-	// Decompress offsets
+func (cs *CompressedBytesSlice) DecompressBlock(dst BytesSlice, i int, decoder any) (BytesSlice, int) { // Decompress offsets
 	blockOffsetPos := len(dst.offsets)
 	firstBlockOffset := len(dst.buf)
 	dst.offsets, _ = cs.offsets.DecompressBlock(dst.offsets, i)
@@ -236,11 +197,12 @@ func (cs *CompressedBytesSlice) decompressBlock(dst BytesSlice, i int, dec *zstd
 			blockBuf = cs.buf[cs.compressedBlockOffsets[i]:]
 		}
 		var err error
-		switch cs.Compression {
-		case CompTypeZstd:
+		if dec, ok := decoder.(zstdDecoder); ok {
 			dst.buf, err = dec.DecodeAll(blockBuf, dst.buf)
-		case CompTypeIguana:
-			dst.buf, err = dec2.DecompressTo(dst.buf, blockBuf)
+		} else if dec, ok := decoder.(iguanaDecoder); ok {
+			dst.buf, err = dec.DecompressTo(dst.buf, blockBuf)
+		} else {
+			panic("unknown decoder")
 		}
 		if err != nil {
 			panic(err)
@@ -264,38 +226,6 @@ func (cs *CompressedBytesSlice) blockOffset(i int) int {
 	default:
 		return 64 + 128 + 192 + (i-3)*256
 	}
-}
-
-func (cs *CompressedBytesSlice) getEncoders() (*zstd.Encoder, *iguana.Encoder) {
-	switch cs.Compression {
-	case CompTypeZstd:
-		var level zstd.EncoderLevel
-		switch cs.CompressionLevel {
-		case CompLevelBest:
-			level = zstd.SpeedBestCompression
-		case CompLevelFastest:
-			level = zstd.SpeedFastest
-		default:
-			level = zstd.SpeedDefault
-		}
-		enc, _ := zstd.NewWriter(nil, zstd.WithEncoderConcurrency(1), zstd.WithEncoderLevel(level))
-		return enc, nil
-	case CompTypeIguana:
-		enc := new(iguana.Encoder)
-		return nil, enc
-	}
-	return nil, nil
-}
-
-func (cs *CompressedBytesSlice) getDecoders() (*zstd.Decoder, *iguana.Decoder) {
-	switch cs.Compression {
-	case CompTypeZstd:
-		dec, _ := zstd.NewReader(nil, zstd.WithDecoderConcurrency(1))
-		return dec, nil
-	case CompTypeIguana:
-		return nil, new(iguana.Decoder)
-	}
-	return nil, nil
 }
 
 func sameSlice(x, y []byte) bool {
