@@ -10,8 +10,8 @@ import (
 type CompType byte
 
 const (
-	CompTypeIguana CompType = iota
-	CompTypeZstd
+	CompTypeZstd CompType = iota
+	CompTypeIguana
 )
 
 func (ct CompType) String() string {
