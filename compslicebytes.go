@@ -83,11 +83,11 @@ func (cs *CompressedBytesSlice) Len() int {
 }
 
 func (cs *CompressedBytesSlice) CompressedSize() int {
-	return len(cs.buf)*8 + len(cs.tail) + cs.offsets.CompressedSize()
+	return len(cs.buf) + len(cs.tail) + len(cs.compressedBlockOffsets)*8 + cs.offsets.CompressedSize()
 }
 
 func (cs *CompressedBytesSlice) MemSize() int {
-	return int(unsafe.Sizeof(cs)) + cap(cs.buf)*8 + cap(cs.tail) + cap(cs.compressedBlockOffsets)*4 + cs.offsets.MemSize()
+	return int(unsafe.Sizeof(cs)) + cap(cs.buf) + cap(cs.tail) + cap(cs.compressedBlockOffsets)*8 + cs.offsets.MemSize()
 }
 
 func (cp *CompressedBytesSlice) IsBlockCompressed(i int) bool {

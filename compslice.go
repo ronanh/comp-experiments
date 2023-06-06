@@ -41,11 +41,11 @@ func (cs *CompressedSlice[T]) Len() int {
 }
 
 func (cs *CompressedSlice[T]) CompressedSize() int {
-	return len(cs.buf)*8 + len(cs.tail)*int(unsafe.Sizeof(T(0)))
+	return len(cs.buf)*8 + len(cs.blockOffsets)*8 + len(cs.tail)*int(unsafe.Sizeof(T(0)))
 }
 
 func (cs *CompressedSlice[T]) MemSize() int {
-	return int(unsafe.Sizeof(cs)) + cap(cs.buf)*8 + cap(cs.tail)*int(unsafe.Sizeof(T(0))) + cap(cs.blockOffsets)*4 + cap(cs.minMax)*int(unsafe.Sizeof(minMax[T]{}))
+	return int(unsafe.Sizeof(cs)) + cap(cs.buf)*8 + cap(cs.tail)*int(unsafe.Sizeof(T(0))) + cap(cs.blockOffsets)*8 + cap(cs.minMax)*int(unsafe.Sizeof(minMax[T]{}))
 }
 
 func (cs *CompressedSlice[T]) IsBlockCompressed(i int) bool {
