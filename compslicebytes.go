@@ -17,8 +17,8 @@ const (
 type CompLevel byte
 
 const (
-	CompLevelFastest CompLevel = iota
-	CompLevelDefault
+	CompLevelDefault CompLevel = iota
+	CompLevelFastest
 	CompLevelBest
 )
 
@@ -251,6 +251,8 @@ func (cs *CompressedBytesSlice) getEncoders() (*zstd.Encoder, *iguana.Encoder) {
 			level = zstd.SpeedBestCompression
 		case CompLevelFastest:
 			level = zstd.SpeedFastest
+		default:
+			level = zstd.SpeedDefault
 		}
 		enc, _ := zstd.NewWriter(nil, zstd.WithEncoderConcurrency(1), zstd.WithEncoderLevel(level))
 		return enc, nil

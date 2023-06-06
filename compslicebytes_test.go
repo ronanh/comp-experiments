@@ -12,7 +12,8 @@ func TestCompressBytes(t *testing.T) {
 	testInput1, testInput2 := genTestInputs(1000), genTestInputs(1000)
 
 	cs := compexperiments.CompressedBytesSlice{
-		Compression: compexperiments.CompTypeIguana,
+		Compression:      compexperiments.CompTypeZstd,
+		CompressionLevel: compexperiments.CompLevelDefault,
 	}
 
 	cs = cs.Compress(testInput1)
