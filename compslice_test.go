@@ -11,6 +11,20 @@ import (
 	"github.com/ronanh/compexperiments"
 )
 
+func TestCompressedIntBufferBasic(t *testing.T) {
+	var cs compexperiments.CompressedSlice[int]
+	var testInput = []int{16985, 17312, 17639, 17966, 18293, 18620, 18947, 19274, 19601, 19928, 20255, 20582, 20785, 21012, 21339, 21666, 21993, 22320, 22647, 22974, 23301, 23628, 23955, 24282, 24609, 24936, 25263, 25590, 25917, 26244, 26571, 26898, 27225, 27552, 27879, 28206, 28533, 28860, 29187, 29514, 29841, 30168, 30495, 30822, 31149, 31476, 31803, 32130, 32457, 32784, 33111, 33438, 33765, 34092, 34419, 34746, 35073, 35400, 35727, 36054, 36381, 36708, 37035, 37362}
+	cs = cs.Compress(testInput)
+	if cs.Len() != len(testInput) {
+		t.Fatalf("expected same len")
+	}
+	for i, v := range cs.Decompress(nil) {
+		if v != testInput[i] {
+			t.Fatalf("expected same value, got %d, expected %d", v, testInput[i])
+		}
+	}
+}
+
 func TestCompressedIntBuffer(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -200,8 +214,8 @@ func TestCompressBufferConstant(t *testing.T) {
 
 	var cb compexperiments.CompressedSlice[int64]
 	cb = cb.Compress(testInput)
-	if got := cb.CompressedSize(); got != 16 {
-		t.Fatalf("expected 16 bytes, got: %d", got)
+	if got := cb.CompressedSize(); got != 24 {
+		t.Fatalf("expected 24 bytes, got: %d", got)
 	}
 }
 
@@ -213,8 +227,8 @@ func TestCompressBufferOneBit(t *testing.T) {
 
 	var cb compexperiments.CompressedSlice[int64]
 	cb = cb.Compress(testInput)
-	if got := cb.CompressedSize(); got != 24 {
-		t.Fatalf("expected 24 bytes, got: %d", got)
+	if got := cb.CompressedSize(); got != 32 {
+		t.Fatalf("expected 32 bytes, got: %d", got)
 	}
 }
 

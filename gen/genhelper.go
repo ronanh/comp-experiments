@@ -27,9 +27,9 @@ func (dpn *dpN) DVal32() string {
 
 func (dpn *dpN) dVal32(n int) string {
 	if n == 0 {
-		return "int64(*(*int32)(unsafe.Pointer(&initvalue)) - *(*int32)(unsafe.Pointer(&in[0])))"
+		return "int64(*(*int32)(unsafe.Pointer(&in[0])) - *(*int32)(unsafe.Pointer(&initvalue)))"
 	}
-	return fmt.Sprintf("int64(*(*int32)(unsafe.Pointer(&in[%d])) - *(*int32)(unsafe.Pointer(&in[%d])))", n-1, n)
+	return fmt.Sprintf("int64(*(*int32)(unsafe.Pointer(&in[%d])) - *(*int32)(unsafe.Pointer(&in[%d])))", n, n-1)
 }
 
 func (dpn *dpN) DVal64() string {
@@ -38,9 +38,9 @@ func (dpn *dpN) DVal64() string {
 
 func (dpn *dpN) dVal64(n int) string {
 	if n == 0 {
-		return "*(*int64)(unsafe.Pointer(&initvalue)) - *(*int64)(unsafe.Pointer(&in[0]))"
+		return "*(*int64)(unsafe.Pointer(&in[0])) - *(*int64)(unsafe.Pointer(&initvalue))"
 	}
-	return fmt.Sprintf("*(*int64)(unsafe.Pointer(&in[%d])) - *(*int64)(unsafe.Pointer(&in[%d]))", n-1, n)
+	return fmt.Sprintf("*(*int64)(unsafe.Pointer(&in[%d])) - *(*int64)(unsafe.Pointer(&in[%d]))", n, n-1)
 }
 
 func (dpn *dpN) ZZDVar() string {
@@ -262,7 +262,7 @@ func (dunb *duNByte) unpackLineZigZag(ntz bool) string {
 			startMask <<= 1
 			startMask |= 1
 		}
-		val = fmt.Sprintf("(%s >> %d) & 0x%X", in1, startBit, startMask)
+		val = fmt.Sprintf("((%s >> %d) & 0x%X)", in1, startBit, startMask)
 	} else {
 		for i := startBit; i < 64; i++ {
 			startMask <<= 1
@@ -277,12 +277,10 @@ func (dunb *duNByte) unpackLineZigZag(ntz bool) string {
 			val = fmt.Sprintf("(%s | ((%s & 0x%X) << %d))", val, in2, endMask, nbBytes-endBit)
 		}
 	}
-	val = fmt.Sprintf("((-(%s & 1))^(%s>>1))", val, val)
 	if ntz {
-		return fmt.Sprintf("vout - IT(%s) << ntz", val)
-	} else {
-		return fmt.Sprintf("vout - IT(%s)", val)
+		val = fmt.Sprintf("(%s << ntz)", val)
 	}
+	return fmt.Sprintf("IT((-(%s & 1))^(%s>>1))", val, val)
 }
 
 func (dunb *duNByte) UnpackLineXor() string {
@@ -305,8 +303,7 @@ func (dunb *duNByte) UnpackLineXor() string {
 			startMask <<= 1
 			startMask |= 1
 		}
-		val = fmt.Sprintf("(%s >> %d) & 0x%X", in1, startBit, startMask)
-		// }
+		val = fmt.Sprintf("((%s >> %d) & 0x%X)", in1, startBit, startMask)
 	} else {
 		for i := startBit; i < 64; i++ {
 			startMask <<= 1
@@ -321,5 +318,5 @@ func (dunb *duNByte) UnpackLineXor() string {
 			val = fmt.Sprintf("(%s | ((%s & 0x%X) << %d))", val, in2, endMask, nbBytes-endBit)
 		}
 	}
-	return fmt.Sprintf("vout ^ (IT(%s) << ntz)", val)
+	return fmt.Sprintf("IT(%s << ntz)", val)
 }

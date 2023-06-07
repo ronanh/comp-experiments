@@ -29,7 +29,7 @@ func compressGroupDeltaAppend[T PackType](out []uint64, in *[64]T, initvalue T) 
 		{{- end}}
 	}
 
-	bitlen, ntz := bits.Len64(mask), bits.TrailingZeros64(mask>>1)&63
+	bitlen, ntz := bits.Len64(mask), bits.TrailingZeros64(mask)&63
 	if mask == 0 {
 		ntz = 0
 	}
@@ -93,7 +93,7 @@ func decompressGroupDelta[T PackType, IT int32|int64](out *[64]T, in []uint64, i
 	case {{$dpn.N}}:
 		in2 := (*[{{$dpn.N}}]uint64)(in)
 		{{- range $dunb := $dpn.Dunb }}
-		vout = {{$dunb.UnpackLineZigZag}}
+		vout += {{$dunb.UnpackLineZigZag}}
 		out[{{$dunb.I}}] = *(*T)(unsafe.Pointer(&vout))
 		{{- end }}
 	{{- end }}
@@ -126,7 +126,7 @@ func decompressGroupDeltaNtz[T PackType, IT int32|int64](out *[64]T, in []uint64
 	case {{$dpn.N}}:
 		in2 := (*[{{$dpn.N}}]uint64)(in)
 		{{- range $dunb := $dpn.Dunb }}
-		vout = {{$dunb.UnpackLineZigZagNtz}}
+		vout += {{$dunb.UnpackLineZigZagNtz}}
 		out[{{$dunb.I}}] = *(*T)(unsafe.Pointer(&vout))
 		{{- end }}
 	{{- end }}
@@ -217,7 +217,7 @@ func decompressGroupXor[T PackType, IT int32|int64](out *[64]T, in []uint64, ini
 	case {{$dpn.N}}:
 		in2 := (*[{{$dpn.N}}]uint64)(in)
 		{{- range $dunb := $dpn.Dunb }}
-		vout = {{$dunb.UnpackLineXor}}
+		vout ^= {{$dunb.UnpackLineXor}}
 		out[{{$dunb.I}}] = *(*T)(unsafe.Pointer(&vout))
 		{{- end }}
 	{{- end }}
