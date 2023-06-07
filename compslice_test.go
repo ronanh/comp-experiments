@@ -214,8 +214,8 @@ func TestCompressBufferConstant(t *testing.T) {
 
 	var cb compexperiments.CompressedSlice[int64]
 	cb = cb.Compress(testInput)
-	if got := cb.CompressedSize(); got != 24 {
-		t.Fatalf("expected 24 bytes, got: %d", got)
+	if got := cb.CompressedSize(); got != 32 {
+		t.Fatalf("expected 32 bytes, got: %d", got)
 	}
 }
 
@@ -227,8 +227,8 @@ func TestCompressBufferOneBit(t *testing.T) {
 
 	var cb compexperiments.CompressedSlice[int64]
 	cb = cb.Compress(testInput)
-	if got := cb.CompressedSize(); got != 32 {
-		t.Fatalf("expected 32 bytes, got: %d", got)
+	if got := cb.CompressedSize(); got != 40 {
+		t.Fatalf("expected 40 bytes, got: %d", got)
 	}
 }
 
@@ -240,8 +240,8 @@ func TestCompressBufferTwoBit(t *testing.T) {
 
 	var cb compexperiments.CompressedSlice[int64]
 	cb = cb.Compress(testInput)
-	if got := cb.CompressedSize(); got != 32 {
-		t.Fatalf("expected 32 bytes, got: %d", got)
+	if got := cb.CompressedSize(); got != 40 {
+		t.Fatalf("expected 40 bytes, got: %d", got)
 	}
 }
 
@@ -253,8 +253,8 @@ func TestCompressBufferNegative(t *testing.T) {
 
 	var cb compexperiments.CompressedSlice[int64]
 	cb = cb.Compress(testInput)
-	if got := cb.CompressedSize(); got != 32 {
-		t.Fatalf("expected 32 bytes, got: %d", got)
+	if got := cb.CompressedSize(); got != 40 {
+		t.Fatalf("expected 40 bytes, got: %d", got)
 	}
 }
 

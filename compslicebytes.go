@@ -216,16 +216,7 @@ func (cs *CompressedBytesSlice) DecompressBlock(dst BytesSlice, i int, decoder a
 }
 
 func (cs *CompressedBytesSlice) blockOffset(i int) int {
-	switch i {
-	case 0:
-		return 0
-	case 1:
-		return 64
-	case 2:
-		return 64 + 128
-	default:
-		return 64 + 128 + 192 + (i-3)*256
-	}
+	return cs.offsets.blockOffset(i)
 }
 
 func sameSlice(x, y []byte) bool {

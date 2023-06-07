@@ -159,7 +159,8 @@ func (cs *CompressedSlice[T]) compressBlock(block []T, minNtz int) {
 	var bh BlockHeader
 	BlockHeaderPos := len(cs.buf)
 	// append block header (initvalue + block header)
-	cs.buf = append(cs.buf, *(*uint64)(unsafe.Pointer(&initvalue)), uint64(bh))
+	cs.buf = append(cs.buf, *(*uint64)(unsafe.Pointer(&initvalue)))
+	cs.buf = append(cs.buf, bh[:]...)
 	for len(block) > 0 {
 		var bitlen, ntz int
 		group := (*[groupSize]T)(block)
@@ -173,7 +174,7 @@ func (cs *CompressedSlice[T]) compressBlock(block []T, minNtz int) {
 		bh = bh.AddGroup(bitlen, ntz)
 		block = block[groupSize:]
 	}
-	cs.buf[BlockHeaderPos+1] = uint64(bh)
+	*(*BlockHeader)(cs.buf[BlockHeaderPos+1:]) = bh
 	cs.blockOffsets = append(cs.blockOffsets, BlockHeaderPos)
 }
 
@@ -195,8 +196,8 @@ func (cs *CompressedSlice[T]) DecompressBlock(dst []T, i int) ([]T, int) {
 	if i < len(cs.blockOffsets) {
 		blockOffset := cs.blockOffsets[i]
 		initvalue := *(*T)(unsafe.Pointer(&cs.buf[blockOffset]))
-		bh := BlockHeader(cs.buf[blockOffset+1])
-		in := cs.buf[cs.blockOffsets[i]+2:]
+		bh := *(*BlockHeader)(cs.buf[blockOffset+1:])
+		in := cs.buf[cs.blockOffsets[i]+1+len(bh):]
 		nbGroups := bh.GroupCount()
 		for i := 0; i < nbGroups; i++ {
 			bitlen, ntz := bh.GetGroup(i)
@@ -218,16 +219,14 @@ func (cs *CompressedSlice[T]) DecompressBlock(dst []T, i int) ([]T, int) {
 }
 
 func (cs *CompressedSlice[T]) blockOffset(i int) int {
-	switch i {
-	case 0:
-		return 0
-	case 1:
-		return groupSize
-	case 2:
-		return (1 + 2) * groupSize
-	default:
-		return (1+2+3)*groupSize + (i-3)*(MaxGroups*groupSize)
+	var res int
+	for g := 1; g < MaxGroups; g++ {
+		if g > i {
+			return res
+		}
+		res += g * groupSize
 	}
+	return res + (i-MaxGroups+1)*MaxGroups*groupSize
 }
 
 func (cs CompressedSlice[T]) fractionSize() int {
