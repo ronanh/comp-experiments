@@ -33,6 +33,10 @@ func (bs *BytesSlice) Len() int {
 	return len(bs.offsets)
 }
 
+func (cs *CompressedBytesSlice) DataLen() int {
+	return cs.lastOffset
+}
+
 func (bs *BytesSlice) Value(i int) []byte {
 	if i == len(bs.offsets)-1 {
 		return bs.buf[bs.offsets[i]:]
