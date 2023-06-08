@@ -44,6 +44,7 @@ func TestCompressBytes(t *testing.T) {
 		t.Fatalf("expected same len")
 	}
 	testInput := append(testInput1, testInput2...)
+	var values [][]byte
 	for i := 0; i < cs.BlockCount(); i++ {
 		dst.Reset()
 		var off int
@@ -53,7 +54,8 @@ func TestCompressBytes(t *testing.T) {
 				t.Fatalf("expected same bytes")
 			}
 		}
-		for j, v := range dst.Values() {
+		values = dst.Values(values[:0])
+		for j, v := range values {
 			if !bytes.Equal(v, testInput[off+j]) {
 				t.Fatalf("expected same bytes")
 			}

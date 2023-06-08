@@ -1,40 +1,18 @@
 package compexperiments
 
 import (
+	"errors"
 	"io"
 	"unsafe"
 )
 
-type zstdEncoder interface {
-	EncodeAll(src []byte, dst []byte) []byte
-	Flush() error
-	Reset(w io.Writer)
-}
-
-type zstdDecoder interface {
-	DecodeAll(input []byte, dst []byte) ([]byte, error)
-}
-
-type iguanaEncoder interface {
-	Compress(src []byte, dst []byte, ansRejectionThreshold float32) ([]byte, error)
-}
-
-type iguanaDecoder interface {
-	DecompressTo(src []byte, dst []byte) ([]byte, error)
-}
-
 type BytesSlice struct {
 	buf     []byte
 	offsets []int
-	values  [][]byte
 }
 
 func (bs *BytesSlice) Len() int {
 	return len(bs.offsets)
-}
-
-func (cs *CompressedBytesSlice) DataLen() int {
-	return cs.lastOffset
 }
 
 func (bs *BytesSlice) Value(i int) []byte {
@@ -44,23 +22,30 @@ func (bs *BytesSlice) Value(i int) []byte {
 	return bs.buf[bs.offsets[i]:bs.offsets[i+1]]
 }
 
-func (bs *BytesSlice) Values() [][]byte {
+func (bs *BytesSlice) Values(dst [][]byte) [][]byte {
 	if len(bs.offsets) == 0 {
 		return nil
 	}
-	if cap(bs.values) < len(bs.offsets) {
-		bs.values = make([][]byte, len(bs.offsets))
+	iFirst := len(dst)
+	if cap(dst)-len(dst) < len(bs.offsets) {
+		dstCopy := dst
+		dst = make([][]byte, len(bs.offsets)+len(dst))
+		copy(dst, dstCopy)
 	} else {
-		bs.values = bs.values[:len(bs.offsets)]
+		dst = dst[:len(bs.offsets)+len(dst)]
 	}
-	for i := range bs.values {
-		if i == len(bs.values)-1 {
-			bs.values[i] = bs.buf[bs.offsets[i]:]
+	for i := range bs.offsets {
+		if i+1 < len(bs.offsets) {
+			dst[i+iFirst] = bs.buf[bs.offsets[i]:bs.offsets[i+1]]
 		} else {
-			bs.values[i] = bs.buf[bs.offsets[i]:bs.offsets[i+1]]
+			dst[i+iFirst] = bs.buf[bs.offsets[i]:]
 		}
 	}
-	return bs.values
+	return dst
+}
+
+func (bs *BytesSlice) ValuesBytes() ([]byte, []int) {
+	return bs.buf, bs.offsets
 }
 
 func (bs *BytesSlice) Reset() {
@@ -85,6 +70,10 @@ func (cs *CompressedBytesSlice) Len() int {
 	return cs.offsets.Len()
 }
 
+func (cs *CompressedBytesSlice) DataLen() int {
+	return cs.lastOffset
+}
+
 func (cs *CompressedBytesSlice) CompressedSize() int {
 	return len(cs.buf) + len(cs.tail) + len(cs.compressedBlockOffsets)*8 + cs.offsets.CompressedSize()
 }
@@ -93,16 +82,24 @@ func (cs *CompressedBytesSlice) MemSize() int {
 	return int(unsafe.Sizeof(cs)) + cap(cs.buf) + cap(cs.tail) + cap(cs.compressedBlockOffsets)*8 + cs.offsets.MemSize()
 }
 
-func (cp *CompressedBytesSlice) IsBlockCompressed(i int) bool {
-	return cp.offsets.IsBlockCompressed(i)
+func (cs *CompressedBytesSlice) IsBlockCompressed(i int) bool {
+	return cs.offsets.IsBlockCompressed(i)
 }
 
 func (cs *CompressedBytesSlice) BlockCount() int {
 	return cs.offsets.BlockCount()
 }
 
-func (cp *CompressedBytesSlice) BlockLen(i int) int {
-	return cp.offsets.BlockLen(i)
+func (cs *CompressedBytesSlice) BlockLen(i int) int {
+	return cs.offsets.BlockLen(i)
+}
+
+func (cs *CompressedBytesSlice) BlockDataLen(i int) int {
+	endOffset := cs.lastOffset
+	if i+1 < cs.BlockCount() {
+		endOffset = cs.offsets.BlockFirstValue(i + 1)
+	}
+	return endOffset - cs.offsets.BlockFirstValue(i)
 }
 
 func (cs CompressedBytesSlice) Compress(src [][]byte, encoder any) CompressedBytesSlice {
@@ -161,34 +158,52 @@ func (cp *CompressedBytesSlice) compressBlock(block []byte, encoder any) {
 	cp.compressedBlockOffsets = append(cp.compressedBlockOffsets, len(cp.buf))
 	// compress data block
 	var err error
-	if enc, ok := encoder.(zstdEncoder); ok {
-		cp.buf = enc.EncodeAll(block, cp.buf)
-	} else if enc, ok := encoder.(iguanaEncoder); ok {
-		cp.buf, err = enc.Compress(block, cp.buf, 1.0)
-	} else {
-		panic("unknown encoder")
-	}
+	cp.buf, err = encode(cp.buf, block, encoder)
 	if err != nil {
 		panic(err)
 	}
 }
 
 func (cs *CompressedBytesSlice) Decompress(dst BytesSlice, decoder any) BytesSlice {
-	blockCount := cs.BlockCount()
-	for i := 0; i < blockCount; i++ {
-		dst, _ = cs.DecompressBlock(dst, i, decoder)
-	}
+	dst.buf, dst.offsets = cs.DecompressBytes(dst.buf, dst.offsets, decoder)
 	return dst
 }
 
-func (cs *CompressedBytesSlice) DecompressBlock(dst BytesSlice, i int, decoder any) (BytesSlice, int) { // Decompress offsets
-	blockOffsetPos := len(dst.offsets)
-	firstBlockOffset := len(dst.buf)
-	dst.offsets, _ = cs.offsets.DecompressBlock(dst.offsets, i)
+func (cs *CompressedBytesSlice) DecompressBytes(dst []byte, dstOffsets []int, decoder any) ([]byte, []int) {
+	if cap(dst) == 0 {
+		dst = make([]byte, 0, cs.DataLen())
+	}
+	if cap(dstOffsets) == 0 {
+		dstOffsets = make([]int, 0, cs.offsets.Len())
+	}
+	blockCount := cs.BlockCount()
+	for i := 0; i < blockCount; i++ {
+		dst, dstOffsets, _ = cs.DecompressBlockBytes(dst, dstOffsets, i, decoder)
+	}
+	return dst, dstOffsets
+}
+
+func (cs *CompressedBytesSlice) DecompressBlock(dst BytesSlice, i int, decoder any) (BytesSlice, int) {
+	var blockOffset int
+	dst.buf, dst.offsets, blockOffset = cs.DecompressBlockBytes(dst.buf, dst.offsets, i, decoder)
+	return dst, blockOffset
+}
+
+func (cs *CompressedBytesSlice) DecompressBlockBytes(dst []byte, dstOffsets []int, i int, decoder any) ([]byte, []int, int) {
+	if cap(dst) == 0 {
+		dst = make([]byte, 0, cs.BlockDataLen(i))
+	}
+	if cap(dstOffsets) == 0 {
+		dstOffsets = make([]int, 0, cs.BlockLen(i))
+	}
+
+	blockOffsetPos := len(dstOffsets)
+	firstBlockOffset := len(dst)
+	dstOffsets, _ = cs.offsets.DecompressBlock(dstOffsets, i)
 	// Fix offsets
-	if delta := dst.offsets[blockOffsetPos] - firstBlockOffset; delta != 0 {
-		for j := blockOffsetPos; j < len(dst.offsets); j++ {
-			dst.offsets[j] -= delta
+	if delta := dstOffsets[blockOffsetPos] - firstBlockOffset; delta != 0 {
+		for j := blockOffsetPos; j < len(dstOffsets); j++ {
+			dstOffsets[j] -= delta
 		}
 	}
 
@@ -200,23 +215,17 @@ func (cs *CompressedBytesSlice) DecompressBlock(dst BytesSlice, i int, decoder a
 		} else {
 			blockBuf = cs.buf[cs.compressedBlockOffsets[i]:]
 		}
+
 		var err error
-		if dec, ok := decoder.(zstdDecoder); ok {
-			dst.buf, err = dec.DecodeAll(blockBuf, dst.buf)
-		} else if dec, ok := decoder.(iguanaDecoder); ok {
-			dst.buf, err = dec.DecompressTo(dst.buf, blockBuf)
-		} else {
-			panic("unknown decoder")
-		}
+		dst, err = decode(dst, blockBuf, decoder)
 		if err != nil {
 			panic(err)
 		}
 	} else {
 		// last block is uncompressed
-		dst.buf = append(dst.buf, cs.tail...)
+		dst = append(dst, cs.tail...)
 	}
-
-	return dst, cs.blockOffset(i)
+	return dst, dstOffsets, cs.blockOffset(i)
 }
 
 func (cs *CompressedBytesSlice) blockOffset(i int) int {
@@ -225,4 +234,40 @@ func (cs *CompressedBytesSlice) blockOffset(i int) int {
 
 func sameSlice(x, y []byte) bool {
 	return len(x) == len(y) && &x[0] == &y[0]
+}
+
+func encode(dst, src []byte, encoder any) ([]byte, error) {
+	if enc, ok := encoder.(zstdEncoder); ok {
+		return enc.EncodeAll(src, dst), nil
+	} else if enc, ok := encoder.(iguanaEncoder); ok {
+		return enc.Compress(src, dst, 1.0)
+	}
+	return nil, errors.New("unknown encoder")
+}
+
+func decode(dst, src []byte, decoder any) ([]byte, error) {
+	if dec, ok := decoder.(zstdDecoder); ok {
+		return dec.DecodeAll(src, dst)
+	} else if dec, ok := decoder.(iguanaDecoder); ok {
+		return dec.DecompressTo(src, dst)
+	}
+	return nil, errors.New("unknown decoder")
+}
+
+type zstdEncoder interface {
+	EncodeAll(src []byte, dst []byte) []byte
+	Flush() error
+	Reset(w io.Writer)
+}
+
+type zstdDecoder interface {
+	DecodeAll(input []byte, dst []byte) ([]byte, error)
+}
+
+type iguanaEncoder interface {
+	Compress(src []byte, dst []byte, ansRejectionThreshold float32) ([]byte, error)
+}
+
+type iguanaDecoder interface {
+	DecompressTo(src []byte, dst []byte) ([]byte, error)
 }
