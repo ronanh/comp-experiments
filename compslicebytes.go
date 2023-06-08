@@ -16,10 +16,10 @@ func (bs *BytesSlice) Len() int {
 }
 
 func (bs *BytesSlice) Value(i int) []byte {
-	if i == len(bs.offsets)-1 {
-		return bs.buf[bs.offsets[i]:]
+	if i+1 < len(bs.offsets) {
+		return bs.buf[bs.offsets[i]:bs.offsets[i+1]]
 	}
-	return bs.buf[bs.offsets[i]:bs.offsets[i+1]]
+	return bs.buf[bs.offsets[i]:]
 }
 
 func (bs *BytesSlice) Values(dst [][]byte) [][]byte {
@@ -35,13 +35,16 @@ func (bs *BytesSlice) Values(dst [][]byte) [][]byte {
 		dst = dst[:len(bs.offsets)+len(dst)]
 	}
 	for i := range bs.offsets {
-		if i+1 < len(bs.offsets) {
-			dst[i+iFirst] = bs.buf[bs.offsets[i]:bs.offsets[i+1]]
-		} else {
-			dst[i+iFirst] = bs.buf[bs.offsets[i]:]
-		}
+		dst[i+iFirst] = bs.blockBuf(i)
 	}
 	return dst
+}
+
+func (bs *BytesSlice) blockBuf(i int) []byte {
+	if i+1 < len(bs.offsets) {
+		return bs.buf[bs.offsets[i]:bs.offsets[i+1]]
+	}
+	return bs.buf[bs.offsets[i]:]
 }
 
 func (bs *BytesSlice) ValuesBytes() ([]byte, []int) {
@@ -59,7 +62,7 @@ type CompressedBytesSlice struct {
 	// uncompressed tail of concatenated bytes
 	tail []byte
 	// compressed block offsets
-	compressedBlockOffsets []int
+	bufBlockOffsets []int
 	// offsets within concatenated bytes
 	offsets CompressedSlice[int]
 	// last offset for concatenated bytes
@@ -75,11 +78,11 @@ func (cs *CompressedBytesSlice) DataLen() int {
 }
 
 func (cs *CompressedBytesSlice) CompressedSize() int {
-	return len(cs.buf) + len(cs.tail) + len(cs.compressedBlockOffsets)*8 + cs.offsets.CompressedSize()
+	return len(cs.buf) + len(cs.tail) + len(cs.bufBlockOffsets)*8 + cs.offsets.CompressedSize()
 }
 
 func (cs *CompressedBytesSlice) MemSize() int {
-	return int(unsafe.Sizeof(cs)) + cap(cs.buf) + cap(cs.tail) + cap(cs.compressedBlockOffsets)*8 + cs.offsets.MemSize()
+	return int(unsafe.Sizeof(cs)) + cap(cs.buf) + cap(cs.tail) + cap(cs.bufBlockOffsets)*8 + cs.offsets.MemSize()
 }
 
 func (cs *CompressedBytesSlice) IsBlockCompressed(i int) bool {
@@ -139,7 +142,7 @@ func (cs CompressedBytesSlice) Compress(src [][]byte, encoder any) CompressedByt
 		}
 		cs.compressBlock(cs.tail, encoder)
 		if len(originalTail) > 0 && sameSlice(cs.tail, originalTail) {
-			// we should not modify the original tail data
+			// should not modify the original tail data
 			cs.tail = nil
 		} else {
 			cs.tail = cs.tail[:0]
@@ -153,9 +156,52 @@ func (cs CompressedBytesSlice) Compress(src [][]byte, encoder any) CompressedByt
 	return cs
 }
 
+func (cs CompressedBytesSlice) CompressBytes(src []byte, offsets []int, encoder any) CompressedBytesSlice {
+	curBlock := cs.offsets.BlockCount()
+
+	if cs.lastOffset != 0 {
+		unmodifiedOffsets := offsets
+		offsets = make([]int, len(offsets))
+		for i, v := range unmodifiedOffsets {
+			offsets[i] = cs.lastOffset + v
+		}
+	}
+	cs.offsets = cs.offsets.Compress(offsets)
+	cs.lastOffset += len(src)
+
+	newBlockCount := cs.offsets.BlockCount()
+
+	// if tail is not empty, try to fill it first
+	// to make a complete block
+	if len(cs.tail) > 0 {
+		firstBlock := curBlock - 1
+		// blockStart, blockEnd := cs.blockOffsetRange(firstBlock)
+		appendSize := cs.BlockDataLen(firstBlock) - len(cs.tail)
+		cs.tail = append(cs.tail, src[:appendSize]...)
+		src = src[appendSize:]
+		if cs.offsets.IsBlockCompressed(firstBlock) {
+			cs.compressBlock(cs.tail, encoder)
+			cs.tail = nil
+		}
+	}
+	for curBlock < newBlockCount {
+		if !cs.offsets.IsBlockCompressed(curBlock) {
+			// add the remaining input to the tail
+			cs.tail = append(cs.tail, src...)
+			break
+		}
+		blockSize := cs.BlockDataLen(curBlock)
+
+		cs.compressBlock(src[:blockSize], encoder)
+		src = src[blockSize:]
+		curBlock++
+	}
+	return cs
+}
+
 func (cp *CompressedBytesSlice) compressBlock(block []byte, encoder any) {
 	// Compress offset block
-	cp.compressedBlockOffsets = append(cp.compressedBlockOffsets, len(cp.buf))
+	cp.bufBlockOffsets = append(cp.bufBlockOffsets, len(cp.buf))
 	// compress data block
 	var err error
 	cp.buf, err = encode(cp.buf, block, encoder)
@@ -209,15 +255,8 @@ func (cs *CompressedBytesSlice) DecompressBlockBytes(dst []byte, dstOffsets []in
 
 	// Decompress data
 	if cs.IsBlockCompressed(i) {
-		var blockBuf []byte
-		if i+1 < len(cs.compressedBlockOffsets) {
-			blockBuf = cs.buf[cs.compressedBlockOffsets[i]:cs.compressedBlockOffsets[i+1]]
-		} else {
-			blockBuf = cs.buf[cs.compressedBlockOffsets[i]:]
-		}
-
 		var err error
-		dst, err = decode(dst, blockBuf, decoder)
+		dst, err = decode(dst, cs.blockBuf(i), decoder)
 		if err != nil {
 			panic(err)
 		}
@@ -225,11 +264,14 @@ func (cs *CompressedBytesSlice) DecompressBlockBytes(dst []byte, dstOffsets []in
 		// last block is uncompressed
 		dst = append(dst, cs.tail...)
 	}
-	return dst, dstOffsets, cs.blockOffset(i)
+	return dst, dstOffsets, cs.offsets.blockOffset(i)
 }
 
-func (cs *CompressedBytesSlice) blockOffset(i int) int {
-	return cs.offsets.blockOffset(i)
+func (cs *CompressedBytesSlice) blockBuf(i int) []byte {
+	if i+1 < len(cs.bufBlockOffsets) {
+		return cs.buf[cs.bufBlockOffsets[i]:cs.bufBlockOffsets[i+1]]
+	}
+	return cs.buf[cs.bufBlockOffsets[i]:]
 }
 
 func sameSlice(x, y []byte) bool {

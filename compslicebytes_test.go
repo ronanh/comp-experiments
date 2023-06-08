@@ -9,8 +9,39 @@ import (
 	compexperiments "github.com/ronanh/compexperiments"
 )
 
+func TestCompress(t *testing.T) {
+	testInput1, testInput2 := genTestInputs(1000), genTestInputs(1000)
+	var cs compexperiments.CompressedBytesSlice
+
+	enc, err := zstd.NewWriter(nil, zstd.WithEncoderConcurrency(1), zstd.WithEncoderLevel(zstd.SpeedDefault))
+	if err != nil {
+		t.Fatalf("expected no error")
+	}
+	defer enc.Close()
+
+	cs = cs.Compress(testInput1, enc)
+	checkExpectedInput(t, testInput1, cs)
+
+	cs = cs.Compress(testInput2, enc)
+	checkExpectedInput(t, append(testInput1, testInput2...), cs)
+}
+
 func TestCompressBytes(t *testing.T) {
 	testInput1, testInput2 := genTestInputs(1000), genTestInputs(1000)
+	var testInputBytes1, testInputBytes2 []byte
+	var testInputOffsets1, testInputOffsets2 []int
+	var curOffset int
+	for _, v := range testInput1 {
+		testInputOffsets1 = append(testInputOffsets1, curOffset)
+		testInputBytes1 = append(testInputBytes1, v...)
+		curOffset += len(v)
+	}
+	curOffset = 0
+	for _, v := range testInput2 {
+		testInputOffsets2 = append(testInputOffsets2, curOffset)
+		testInputBytes2 = append(testInputBytes2, v...)
+		curOffset += len(v)
+	}
 
 	var cs compexperiments.CompressedBytesSlice
 
@@ -19,46 +50,106 @@ func TestCompressBytes(t *testing.T) {
 		t.Fatalf("expected no error")
 	}
 	defer enc.Close()
-	cs = cs.Compress(testInput1, enc)
-	if cs.Len() != len(testInput1) {
-		t.Fatalf("expected same len")
-	}
 
+	cs = cs.CompressBytes(testInputBytes1, testInputOffsets1, enc)
+	checkExpectedInput(t, testInput1, cs)
+
+	cs = cs.CompressBytes(testInputBytes2, testInputOffsets2, enc)
+	checkExpectedInput(t, append(testInput1, testInput2...), cs)
+}
+
+func checkExpectedInput(t *testing.T, expectedInput [][]byte, res compexperiments.CompressedBytesSlice) {
 	dec, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(1))
 	if err != nil {
 		t.Fatalf("expected no error")
 	}
 	defer dec.Close()
-	var dst compexperiments.BytesSlice
-	dst = cs.Decompress(dst, dec)
-	if dst.Len() != len(testInput1) {
-		t.Fatalf("expected same len")
+
+	if res.Len() != len(expectedInput) {
+		t.Fatalf("expected same len, got %d, expected %d", res.Len(), len(expectedInput))
 	}
-	cs = cs.Compress(testInput2, enc)
-	if cs.Len() != len(testInput1)+len(testInput2) {
-		t.Fatalf("expected same len")
-	}
-	dst.Reset()
-	dst = cs.Decompress(dst, dec)
-	if dst.Len() != len(testInput1)+len(testInput2) {
-		t.Fatalf("expected same len")
-	}
-	testInput := append(testInput1, testInput2...)
+	var dstSlice compexperiments.BytesSlice
+	var dstBuf []byte
+	var dstBufOff []int
 	var values [][]byte
-	for i := 0; i < cs.BlockCount(); i++ {
-		dst.Reset()
+
+	// Decompression by block
+	for i := 0; i < res.BlockCount(); i++ {
+		dstSlice.Reset()
 		var off int
-		dst, off = cs.DecompressBlock(dst, i, dec)
-		for j := 0; j < dst.Len(); j++ {
-			if !bytes.Equal(dst.Value(j), testInput[off+j]) {
-				t.Fatalf("expected same bytes")
+		// check with DecompressBlock
+		dstSlice, off = res.DecompressBlock(dstSlice, i, dec)
+		for j := 0; j < dstSlice.Len(); j++ {
+			if !bytes.Equal(dstSlice.Value(j), expectedInput[off+j]) {
+				t.Fatalf("got %s, expected %s", dstSlice.Value(j), expectedInput[off+j])
 			}
 		}
-		values = dst.Values(values[:0])
+		// check block Values
+		values = dstSlice.Values(values[:0])
 		for j, v := range values {
-			if !bytes.Equal(v, testInput[off+j]) {
-				t.Fatalf("expected same bytes")
+			if !bytes.Equal(v, expectedInput[off+j]) {
+				t.Fatalf("got %s, expected %s", v, expectedInput[off+j])
 			}
+		}
+		// check block Value(i)
+		for j := 0; j < dstSlice.Len(); j++ {
+			if !bytes.Equal(dstSlice.Value(j), dstSlice.Value(j)) {
+				t.Fatalf("got %s, expected %s", dstSlice.Value(j), dstSlice.Value(j))
+			}
+		}
+		// check block ValuesBytes
+		{
+			dstBuf, dstBufOff := dstSlice.ValuesBytes()
+			for j := 0; j < len(dstBufOff); j++ {
+				endOff := len(dstBuf)
+				if j+1 < len(dstBufOff) {
+					endOff = dstBufOff[j+1]
+				}
+				if !bytes.Equal(dstBuf[dstBufOff[j]:endOff], expectedInput[off+j]) {
+					t.Fatalf("got %s, expected %s", dstBuf[dstBufOff[j]:endOff], expectedInput[off+j])
+				}
+			}
+		}
+
+		// check with DecompressBlockBytes
+		dstBuf, dstBufOff, off = res.DecompressBlockBytes(dstBuf[:0], dstBufOff[:0], i, dec)
+		for j := 0; j < len(dstBufOff); j++ {
+			endOff := len(dstBuf)
+			if j+1 < len(dstBufOff) {
+				endOff = dstBufOff[j+1]
+			}
+			if !bytes.Equal(dstBuf[dstBufOff[j]:endOff], expectedInput[off+j]) {
+				t.Fatalf("got %s, expected %s", dstBuf[dstBufOff[j]:endOff], expectedInput[off+j])
+			}
+		}
+	}
+
+	// Decompression in one go
+	dstSlice.Reset()
+	dstSlice = res.Decompress(dstSlice, dec)
+	// check len
+	if dstSlice.Len() != len(expectedInput) {
+		t.Fatalf("got %d, expected %d", dstSlice.Len(), len(expectedInput))
+	}
+	for i := 0; i < dstSlice.Len(); i++ {
+		if !bytes.Equal(dstSlice.Value(i), expectedInput[i]) {
+			t.Fatalf("got %s, expected %s", dstSlice.Value(i), expectedInput[i])
+		}
+	}
+
+	// Decompression in one go with Bytes
+	dstBuf, dstBufOff = res.DecompressBytes(dstBuf[:0], dstBufOff[:0], dec)
+	// check len
+	if len(dstBufOff) != len(expectedInput) {
+		t.Fatalf("got %d, expected %d", len(dstBufOff), len(expectedInput))
+	}
+	for i := 0; i < len(dstBufOff); i++ {
+		endOff := len(dstBuf)
+		if i+1 < len(dstBufOff) {
+			endOff = dstBufOff[i+1]
+		}
+		if !bytes.Equal(dstBuf[dstBufOff[i]:endOff], expectedInput[i]) {
+			t.Fatalf("got %s, expected %s", dstBuf[dstBufOff[i]:endOff], expectedInput[i])
 		}
 	}
 }
