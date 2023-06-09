@@ -106,6 +106,9 @@ func (cs *CompressedBytesSlice) BlockDataLen(i int) int {
 }
 
 func (cs CompressedBytesSlice) Compress(src [][]byte, encoder any) CompressedBytesSlice {
+	if len(cs.bufBlockOffsets) != len(cs.offsets.blockOffsets) {
+		panic("invalid block offsets")
+	}
 	newOffsets := make([]int, len(src))
 	curOffset := cs.lastOffset
 	for i, v := range src {
@@ -153,10 +156,16 @@ func (cs CompressedBytesSlice) Compress(src [][]byte, encoder any) CompressedByt
 		cs.tail = append(cs.tail, v...)
 	}
 
+	if len(cs.bufBlockOffsets) != len(cs.offsets.blockOffsets) {
+		panic("invalid block offsets")
+	}
 	return cs
 }
 
 func (cs CompressedBytesSlice) CompressBytes(src []byte, offsets []int, encoder any) CompressedBytesSlice {
+	if len(cs.bufBlockOffsets) != len(cs.offsets.blockOffsets) {
+		panic("invalid block offsets")
+	}
 	curBlock := cs.offsets.BlockCount()
 
 	if cs.lastOffset != 0 {
@@ -196,6 +205,9 @@ func (cs CompressedBytesSlice) CompressBytes(src []byte, offsets []int, encoder 
 		src = src[blockSize:]
 		curBlock++
 	}
+	if len(cs.bufBlockOffsets) != len(cs.offsets.blockOffsets) {
+		panic("invalid block offsets")
+	}
 	return cs
 }
 
@@ -211,11 +223,17 @@ func (cp *CompressedBytesSlice) compressBlock(block []byte, encoder any) {
 }
 
 func (cs *CompressedBytesSlice) Decompress(dst BytesSlice, decoder any) BytesSlice {
+	if len(cs.bufBlockOffsets) != len(cs.offsets.blockOffsets) {
+		panic("invalid block offsets")
+	}
 	dst.buf, dst.offsets = cs.DecompressBytes(dst.buf, dst.offsets, decoder)
 	return dst
 }
 
 func (cs *CompressedBytesSlice) DecompressBytes(dst []byte, dstOffsets []int, decoder any) ([]byte, []int) {
+	if len(cs.bufBlockOffsets) != len(cs.offsets.blockOffsets) {
+		panic("invalid block offsets")
+	}
 	if cap(dst) == 0 {
 		dst = make([]byte, 0, cs.DataLen())
 	}
@@ -230,12 +248,18 @@ func (cs *CompressedBytesSlice) DecompressBytes(dst []byte, dstOffsets []int, de
 }
 
 func (cs *CompressedBytesSlice) DecompressBlock(dst BytesSlice, i int, decoder any) (BytesSlice, int) {
+	if len(cs.bufBlockOffsets) != len(cs.offsets.blockOffsets) {
+		panic("invalid block offsets")
+	}
 	var blockOffset int
 	dst.buf, dst.offsets, blockOffset = cs.DecompressBlockBytes(dst.buf, dst.offsets, i, decoder)
 	return dst, blockOffset
 }
 
 func (cs *CompressedBytesSlice) DecompressBlockBytes(dst []byte, dstOffsets []int, i int, decoder any) ([]byte, []int, int) {
+	if len(cs.bufBlockOffsets) != len(cs.offsets.blockOffsets) {
+		panic("invalid block offsets")
+	}
 	if cap(dst) == 0 {
 		dst = make([]byte, 0, cs.BlockDataLen(i))
 	}
