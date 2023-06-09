@@ -166,9 +166,6 @@ func (cs CompressedBytesSlice) CompressBytes(src []byte, offsets []int, encoder 
 	if len(cs.bufBlockOffsets) != len(cs.offsets.blockOffsets) {
 		panic("invalid block offsets")
 	}
-	if (len(cs.tail) > 0) != (len(cs.offsets.tail) > 0) {
-		panic("invalid tail")
-	}
 	prevBlockCount := cs.offsets.BlockCount()
 
 	if cs.lastOffset != 0 {
@@ -217,9 +214,6 @@ func (cs CompressedBytesSlice) CompressBytes(src []byte, offsets []int, encoder 
 	}
 	if len(src) > 0 {
 		panic("src should have been consumed")
-	}
-	if (len(cs.tail) > 0) != (len(cs.offsets.tail) > 0) {
-		panic("invalid tail")
 	}
 	if len(cs.bufBlockOffsets) != len(cs.offsets.blockOffsets) {
 		panic("invalid block offsets")
