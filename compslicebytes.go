@@ -167,6 +167,7 @@ func (cs CompressedBytesSlice) CompressBytes(src []byte, offsets []int, encoder 
 		panic("invalid block offsets")
 	}
 	prevBlockCount := cs.offsets.BlockCount()
+	withTail := len(cs.offsets.tail) > 0
 
 	if cs.lastOffset != 0 {
 		unmodifiedOffsets := offsets
@@ -182,7 +183,6 @@ func (cs CompressedBytesSlice) CompressBytes(src []byte, offsets []int, encoder 
 
 	// if tail is not empty, try to fill it first
 	// to make a complete block
-	withTail := len(cs.tail) > 0
 	var withTailCompressed, withFinalTail bool
 	if withTail {
 		firstBlock := prevBlockCount - 1
