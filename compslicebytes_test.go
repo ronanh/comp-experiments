@@ -154,6 +154,35 @@ func checkExpectedInput(t *testing.T, expectedInput [][]byte, res compexperiment
 	}
 }
 
+func TestCompressBytes2(t *testing.T) {
+	rand.Seed(1) //nolint
+
+	enc, err := zstd.NewWriter(nil, zstd.WithEncoderConcurrency(1), zstd.WithEncoderLevel(zstd.SpeedDefault))
+	if err != nil {
+		t.Fatalf("expected no error")
+	}
+	defer enc.Close()
+
+	for j := 0; j < 1000; j++ {
+		maxInputSize := rand.Intn(2000) + 1
+		var cs compexperiments.CompressedBytesSlice
+		const nbCompress = 100
+		for i := 0; i < nbCompress; i++ {
+			testInput := genTestInputs(rand.Intn(maxInputSize))
+
+			var testInputBytes []byte
+			var testInputOffsets []int
+			var curOffset int
+			for _, v := range testInput {
+				testInputOffsets = append(testInputOffsets, curOffset)
+				testInputBytes = append(testInputBytes, v...)
+				curOffset += len(v)
+			}
+			cs = cs.CompressBytes(testInputBytes, testInputOffsets, enc)
+		}
+	}
+}
+
 // generate random strings (alphanum) of length 0-1000
 // converted to []byte
 func genTestInputs(n int) [][]byte {

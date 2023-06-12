@@ -183,7 +183,6 @@ func (cs CompressedBytesSlice) CompressBytes(src []byte, offsets []int, encoder 
 
 	// if tail is not empty, try to fill it first
 	// to make a complete block
-	var withTailCompressed, withFinalTail bool
 	if withTail {
 		firstBlock := prevBlockCount - 1
 		// blockStart, blockEnd := cs.blockOffsetRange(firstBlock)
@@ -193,7 +192,6 @@ func (cs CompressedBytesSlice) CompressBytes(src []byte, offsets []int, encoder 
 		if cs.offsets.IsBlockCompressed(firstBlock) {
 			cs.compressBlock(cs.tail, encoder)
 			cs.tail = nil
-			withTailCompressed = true
 		}
 	}
 	for i := prevBlockCount; i < newBlockCount; i++ {
@@ -201,7 +199,6 @@ func (cs CompressedBytesSlice) CompressBytes(src []byte, offsets []int, encoder 
 			// add the remaining input to the tail
 			cs.tail = append(cs.tail, src...)
 			src = nil
-			withFinalTail = true
 			if i != newBlockCount-1 {
 				panic("invalid block count")
 			}
@@ -218,8 +215,6 @@ func (cs CompressedBytesSlice) CompressBytes(src []byte, offsets []int, encoder 
 	if len(cs.bufBlockOffsets) != len(cs.offsets.blockOffsets) {
 		panic("invalid block offsets")
 	}
-	_ = withTailCompressed
-	_ = withFinalTail
 	return cs
 }
 
