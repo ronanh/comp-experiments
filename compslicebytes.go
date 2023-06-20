@@ -69,6 +69,22 @@ type CompressedBytesSlice struct {
 	lastOffset int
 }
 
+func (cs *CompressedBytesSlice) Import(buf []byte, tail []byte, bufBlockOffsets []int, offsets CompressedSlice[int]) {
+	cs.buf = buf
+	cs.tail = tail
+	cs.bufBlockOffsets = bufBlockOffsets
+	cs.offsets = offsets
+	// compute last offset
+	if offsets.Len() > 0 {
+		block, _ := offsets.GetBlock(nil, offsets.BlockCount()-1)
+		cs.lastOffset = block[len(block)-1]
+	}
+}
+
+func (cs *CompressedBytesSlice) Export() ([]byte, []byte, []int, CompressedSlice[int]) {
+	return cs.buf, cs.tail, cs.bufBlockOffsets, cs.offsets
+}
+
 func (cs *CompressedBytesSlice) Len() int {
 	return cs.offsets.Len()
 }

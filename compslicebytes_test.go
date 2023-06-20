@@ -183,6 +183,25 @@ func TestCompressBytes2(t *testing.T) {
 	}
 }
 
+func TestImportExportBytesSlice(t *testing.T) {
+	testInput1 := genTestInputs(1000)
+	var cs compexperiments.CompressedBytesSlice
+
+	enc, err := zstd.NewWriter(nil, zstd.WithEncoderConcurrency(1), zstd.WithEncoderLevel(zstd.SpeedDefault))
+	if err != nil {
+		t.Fatalf("expected no error")
+	}
+	defer enc.Close()
+
+	cs = cs.Append(testInput1, enc)
+	checkExpectedInput(t, testInput1, cs)
+
+	var cs2 compexperiments.CompressedBytesSlice
+	cs2.Import(cs.Export())
+
+	checkExpectedInput(t, testInput1, cs2)
+}
+
 // generate random strings (alphanum) of length 0-1000
 // converted to []byte
 func genTestInputs(n int) [][]byte {
