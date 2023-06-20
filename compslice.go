@@ -161,6 +161,18 @@ func (cs *CompressedSlice[T]) compressBlock(block []T, minNtz int) {
 	// append block header (initvalue + block header)
 	cs.buf = append(cs.buf, *(*uint64)(unsafe.Pointer(&initvalue)))
 	cs.buf = append(cs.buf, bh[:]...)
+	if cs.minMax != nil {
+		min, max := block[0], block[0]
+		for _, v := range block {
+			if v < min {
+				min = v
+			}
+			if v > max {
+				max = v
+			}
+		}
+		cs.minMax = append(cs.minMax, minMax[T]{min, max})
+	}
 	for len(block) > 0 {
 		var bitlen, ntz int
 		group := (*[groupSize]T)(block)
