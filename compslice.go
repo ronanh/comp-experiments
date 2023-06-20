@@ -22,6 +22,16 @@ type CompressedSlice[T PackType] struct {
 	minMax []minMax[T]
 }
 
+func (cs *CompressedSlice[T]) Import(buf []uint64, tail []T, blockOffsets []int, minMax []minMax[T]) {
+	cs.buf = buf
+	cs.tail = tail
+	cs.blockOffsets = blockOffsets
+}
+
+func (cs *CompressedSlice[T]) Export() ([]uint64, []T, []int, []minMax[T]) {
+	return cs.buf, cs.tail, cs.blockOffsets, cs.minMax
+}
+
 func (cs *CompressedSlice[T]) WithMinMax(v bool) {
 	if v {
 		cs.minMax = make([]minMax[T], 0)
@@ -105,19 +115,19 @@ func (cs *CompressedSlice[T]) BlockMinMax(i int) (T, T) {
 	panic("invalid block index")
 }
 
-func (cs CompressedSlice[T]) Compress(src []T) CompressedSlice[T] {
-	return cs.compress(src, 0)
+func (cs CompressedSlice[T]) Append(src []T) CompressedSlice[T] {
+	return cs.append(src, 0)
 }
 
-func (cs CompressedSlice[T]) CompressLossy(src []T, maxBits int) CompressedSlice[T] {
+func (cs CompressedSlice[T]) AppendLossy(src []T, maxBits int) CompressedSlice[T] {
 	minNtz := cs.fractionSize() - maxBits
 	if minNtz < 1 {
 		panic("maxBits too large")
 	}
-	return cs.compress(src, minNtz)
+	return cs.append(src, minNtz)
 }
 
-func (cs CompressedSlice[T]) compress(src []T, minNtz int) CompressedSlice[T] {
+func (cs CompressedSlice[T]) append(src []T, minNtz int) CompressedSlice[T] {
 	// Compute nbGroups:
 	// first block should have 1 group
 	// second block should have 2 groups
@@ -138,12 +148,12 @@ func (cs CompressedSlice[T]) compress(src []T, minNtz int) CompressedSlice[T] {
 			src = src[appendTailCount:]
 			if len(cs.tail) == groupSize*nbGroups {
 				// tail is full, compress it
-				cs.compressBlock(cs.tail, minNtz)
+				cs.appendBlock(cs.tail, minNtz)
 				cs.tail = nil
 			}
 		} else if len(src) >= groupSize*nbGroups {
 			// compress a full block
-			cs.compressBlock(src[:groupSize*nbGroups], minNtz)
+			cs.appendBlock(src[:groupSize*nbGroups], minNtz)
 			src = src[groupSize*nbGroups:]
 		} else {
 			// append to tail
@@ -154,12 +164,12 @@ func (cs CompressedSlice[T]) compress(src []T, minNtz int) CompressedSlice[T] {
 	return cs
 }
 
-func (cs *CompressedSlice[T]) compressBlock(block []T, minNtz int) {
-	initvalue := block[0]
+func (cs *CompressedSlice[T]) appendBlock(block []T, minNtz int) {
+	blockOffsetvalue := block[0]
 	var bh BlockHeader
 	BlockHeaderPos := len(cs.buf)
-	// append block header (initvalue + block header)
-	cs.buf = append(cs.buf, *(*uint64)(unsafe.Pointer(&initvalue)))
+	// append block header (blockOffsetValue + block header)
+	cs.buf = append(cs.buf, *(*uint64)(unsafe.Pointer(&blockOffsetvalue)))
 	cs.buf = append(cs.buf, bh[:]...)
 	if cs.minMax != nil {
 		min, max := block[0], block[0]
@@ -178,36 +188,37 @@ func (cs *CompressedSlice[T]) compressBlock(block []T, minNtz int) {
 		group := (*[groupSize]T)(block)
 		switch any(T(0)).(type) {
 		case float32, float64:
-			cs.buf, bitlen, ntz, _ = compressGroupXorAppend(cs.buf, group, initvalue, minNtz)
+			cs.buf, bitlen, ntz, _ = compressGroupXorAppend(cs.buf, group, blockOffsetvalue, minNtz)
 		default:
-			cs.buf, bitlen, ntz, _ = compressGroupDeltaAppend(cs.buf, group, initvalue)
+			cs.buf, bitlen, ntz, _ = compressGroupDeltaAppend(cs.buf, group, blockOffsetvalue)
 		}
-		initvalue = group[groupSize-1]
+		blockOffsetvalue = group[groupSize-1]
 		bh = bh.AddGroup(bitlen, ntz)
 		block = block[groupSize:]
 	}
 	*(*BlockHeader)(cs.buf[BlockHeaderPos+1:]) = bh
 	cs.blockOffsets = append(cs.blockOffsets, BlockHeaderPos)
+
 }
 
-func (cs *CompressedSlice[T]) Decompress(dst []T) []T {
+func (cs *CompressedSlice[T]) Get(dst []T) []T {
 	if dst == nil {
 		dst = make([]T, 0, MaxGroups*groupSize)
 	}
 	blockCount := cs.BlockCount()
 	for i := 0; i < blockCount; i++ {
-		dst, _ = cs.DecompressBlock(dst, i)
+		dst, _ = cs.GetBlock(dst, i)
 	}
 	return dst
 }
 
-func (cs *CompressedSlice[T]) DecompressBlock(dst []T, i int) ([]T, int) {
+func (cs *CompressedSlice[T]) GetBlock(dst []T, i int) ([]T, int) {
 	if dst == nil {
 		dst = make([]T, 0, MaxGroups*groupSize)
 	}
 	if i < len(cs.blockOffsets) {
 		blockOffset := cs.blockOffsets[i]
-		initvalue := *(*T)(unsafe.Pointer(&cs.buf[blockOffset]))
+		blockOffsetvalue := *(*T)(unsafe.Pointer(&cs.buf[blockOffset]))
 		bh := *(*BlockHeader)(cs.buf[blockOffset+1:])
 		in := cs.buf[cs.blockOffsets[i]+1+len(bh):]
 		nbGroups := bh.GroupCount()
@@ -215,11 +226,11 @@ func (cs *CompressedSlice[T]) DecompressBlock(dst []T, i int) ([]T, int) {
 			bitlen, ntz := bh.GetGroup(i)
 			switch any(T(0)).(type) {
 			case float32, float64:
-				dst = decompressGroupXorAppend(dst, in, initvalue, bitlen, ntz)
+				dst = decompressGroupXorAppend(dst, in, blockOffsetvalue, bitlen, ntz)
 			default:
-				dst = decompressGroupDeltaAppend(dst, in, initvalue, bitlen, ntz)
+				dst = decompressGroupDeltaAppend(dst, in, blockOffsetvalue, bitlen, ntz)
 			}
-			initvalue = dst[len(dst)-1]
+			blockOffsetvalue = dst[len(dst)-1]
 			in = in[bitlen-ntz:]
 		}
 		return dst, cs.blockOffset(i)

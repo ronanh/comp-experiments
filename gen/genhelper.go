@@ -27,7 +27,7 @@ func (dpn *dpN) DVal32() string {
 
 func (dpn *dpN) dVal32(n int) string {
 	if n == 0 {
-		return "int64(*(*int32)(unsafe.Pointer(&in[0])) - *(*int32)(unsafe.Pointer(&initvalue)))"
+		return "int64(*(*int32)(unsafe.Pointer(&in[0])) - *(*int32)(unsafe.Pointer(&blockOffsetValue)))"
 	}
 	return fmt.Sprintf("int64(*(*int32)(unsafe.Pointer(&in[%d])) - *(*int32)(unsafe.Pointer(&in[%d])))", n, n-1)
 }
@@ -38,7 +38,7 @@ func (dpn *dpN) DVal64() string {
 
 func (dpn *dpN) dVal64(n int) string {
 	if n == 0 {
-		return "*(*int64)(unsafe.Pointer(&in[0])) - *(*int64)(unsafe.Pointer(&initvalue))"
+		return "*(*int64)(unsafe.Pointer(&in[0])) - *(*int64)(unsafe.Pointer(&blockOffsetValue))"
 	}
 	return fmt.Sprintf("*(*int64)(unsafe.Pointer(&in[%d])) - *(*int64)(unsafe.Pointer(&in[%d]))", n, n-1)
 }
@@ -73,7 +73,7 @@ func (dpn *dpN) XORVal32() string {
 
 func (dpn *dpN) xorVal32(n int) string {
 	if n == 0 {
-		return "uint64(uint32(*(*int32)(unsafe.Pointer(&initvalue)) ^ *(*int32)(unsafe.Pointer(&in[0]))))"
+		return "uint64(uint32(*(*int32)(unsafe.Pointer(&blockOffsetValue)) ^ *(*int32)(unsafe.Pointer(&in[0]))))"
 	}
 	return fmt.Sprintf("uint64(uint32(*(*int32)(unsafe.Pointer(&in[%d])) ^ *(*int32)(unsafe.Pointer(&in[%d]))))", n-1, n)
 }
@@ -84,7 +84,7 @@ func (dpn *dpN) XORVal64() string {
 
 func (dpn *dpN) xorVal64(n int) string {
 	if n == 0 {
-		return "uint64(*(*int64)(unsafe.Pointer(&initvalue)) ^ *(*int64)(unsafe.Pointer(&in[0])))"
+		return "uint64(*(*int64)(unsafe.Pointer(&blockOffsetValue)) ^ *(*int64)(unsafe.Pointer(&in[0])))"
 	}
 	return fmt.Sprintf("uint64(*(*int64)(unsafe.Pointer(&in[%d])) ^ *(*int64)(unsafe.Pointer(&in[%d])))", n-1, n)
 }
@@ -244,7 +244,7 @@ func (dunb *duNByte) UnpackLineZigZag() string {
 
 func (dunb *duNByte) unpackLineZigZag(ntz bool) string {
 	if dunb.dpn.N == 0 {
-		return "initvalue"
+		return "blockOffsetValue"
 	}
 	nbBytes := dunb.dpn.NbBytes()
 	startByte := dunb.I * nbBytes / 64
@@ -285,7 +285,7 @@ func (dunb *duNByte) unpackLineZigZag(ntz bool) string {
 
 func (dunb *duNByte) UnpackLineXor() string {
 	if dunb.dpn.N == 0 {
-		return "initvalue"
+		return "blockOffsetValue"
 	}
 	nbBytes := dunb.dpn.NbBytes()
 	startByte := dunb.I * nbBytes / 64

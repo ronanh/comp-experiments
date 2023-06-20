@@ -105,7 +105,7 @@ func (cs *CompressedBytesSlice) BlockDataLen(i int) int {
 	return endOffset - cs.offsets.BlockFirstValue(i)
 }
 
-func (cs CompressedBytesSlice) Compress(src [][]byte, encoder any) CompressedBytesSlice {
+func (cs CompressedBytesSlice) Append(src [][]byte, encoder any) CompressedBytesSlice {
 	if len(cs.bufBlockOffsets) != len(cs.offsets.blockOffsets) {
 		panic("invalid block offsets")
 	}
@@ -122,7 +122,7 @@ func (cs CompressedBytesSlice) Compress(src [][]byte, encoder any) CompressedByt
 	}
 	firstCompressedBlock++
 
-	cs.offsets = cs.offsets.Compress(newOffsets)
+	cs.offsets = cs.offsets.Append(newOffsets)
 	originalTail := cs.tail
 	// Use sliceOffsets new compressed blocks to add the corresponding data blocks
 	blockCount := cs.offsets.BlockCount()
@@ -143,7 +143,7 @@ func (cs CompressedBytesSlice) Compress(src [][]byte, encoder any) CompressedByt
 		if len(cs.tail) != blockLen {
 			panic("invalid tail length")
 		}
-		cs.compressBlock(cs.tail, encoder)
+		cs.appendBlock(cs.tail, encoder)
 		if len(originalTail) > 0 && sameSlice(cs.tail, originalTail) {
 			// should not modify the original tail data
 			cs.tail = nil
@@ -162,7 +162,7 @@ func (cs CompressedBytesSlice) Compress(src [][]byte, encoder any) CompressedByt
 	return cs
 }
 
-func (cs CompressedBytesSlice) CompressBytes(src []byte, offsets []int, encoder any) CompressedBytesSlice {
+func (cs CompressedBytesSlice) AppendBytes(src []byte, offsets []int, encoder any) CompressedBytesSlice {
 	if len(cs.bufBlockOffsets) != len(cs.offsets.blockOffsets) {
 		panic("invalid block offsets")
 	}
@@ -176,7 +176,7 @@ func (cs CompressedBytesSlice) CompressBytes(src []byte, offsets []int, encoder 
 			offsets[i] = cs.lastOffset + v
 		}
 	}
-	cs.offsets = cs.offsets.Compress(offsets)
+	cs.offsets = cs.offsets.Append(offsets)
 	cs.lastOffset += len(src)
 
 	newBlockCount := cs.offsets.BlockCount()
@@ -190,7 +190,7 @@ func (cs CompressedBytesSlice) CompressBytes(src []byte, offsets []int, encoder 
 		cs.tail = append(cs.tail, src[:appendSize]...)
 		src = src[appendSize:]
 		if cs.offsets.IsBlockCompressed(firstBlock) {
-			cs.compressBlock(cs.tail, encoder)
+			cs.appendBlock(cs.tail, encoder)
 			cs.tail = nil
 		}
 	}
@@ -206,7 +206,7 @@ func (cs CompressedBytesSlice) CompressBytes(src []byte, offsets []int, encoder 
 		}
 		blockSize := cs.BlockDataLen(i)
 
-		cs.compressBlock(src[:blockSize], encoder)
+		cs.appendBlock(src[:blockSize], encoder)
 		src = src[blockSize:]
 	}
 	if len(src) > 0 {
@@ -218,7 +218,7 @@ func (cs CompressedBytesSlice) CompressBytes(src []byte, offsets []int, encoder 
 	return cs
 }
 
-func (cp *CompressedBytesSlice) compressBlock(block []byte, encoder any) {
+func (cp *CompressedBytesSlice) appendBlock(block []byte, encoder any) {
 	// Compress offset block
 	cp.bufBlockOffsets = append(cp.bufBlockOffsets, len(cp.buf))
 	// compress data block
@@ -229,15 +229,15 @@ func (cp *CompressedBytesSlice) compressBlock(block []byte, encoder any) {
 	}
 }
 
-func (cs *CompressedBytesSlice) Decompress(dst BytesSlice, decoder any) BytesSlice {
+func (cs *CompressedBytesSlice) Get(dst BytesSlice, decoder any) BytesSlice {
 	if len(cs.bufBlockOffsets) != len(cs.offsets.blockOffsets) {
 		panic("invalid block offsets")
 	}
-	dst.buf, dst.offsets = cs.DecompressBytes(dst.buf, dst.offsets, decoder)
+	dst.buf, dst.offsets = cs.GetBytes(dst.buf, dst.offsets, decoder)
 	return dst
 }
 
-func (cs *CompressedBytesSlice) DecompressBytes(dst []byte, dstOffsets []int, decoder any) ([]byte, []int) {
+func (cs *CompressedBytesSlice) GetBytes(dst []byte, dstOffsets []int, decoder any) ([]byte, []int) {
 	if len(cs.bufBlockOffsets) != len(cs.offsets.blockOffsets) {
 		panic("invalid block offsets")
 	}
@@ -249,21 +249,21 @@ func (cs *CompressedBytesSlice) DecompressBytes(dst []byte, dstOffsets []int, de
 	}
 	blockCount := cs.BlockCount()
 	for i := 0; i < blockCount; i++ {
-		dst, dstOffsets, _ = cs.DecompressBlockBytes(dst, dstOffsets, i, decoder)
+		dst, dstOffsets, _ = cs.GetBlockBytes(dst, dstOffsets, i, decoder)
 	}
 	return dst, dstOffsets
 }
 
-func (cs *CompressedBytesSlice) DecompressBlock(dst BytesSlice, i int, decoder any) (BytesSlice, int) {
+func (cs *CompressedBytesSlice) GetBlock(dst BytesSlice, i int, decoder any) (BytesSlice, int) {
 	if len(cs.bufBlockOffsets) != len(cs.offsets.blockOffsets) {
 		panic("invalid block offsets")
 	}
 	var blockOffset int
-	dst.buf, dst.offsets, blockOffset = cs.DecompressBlockBytes(dst.buf, dst.offsets, i, decoder)
+	dst.buf, dst.offsets, blockOffset = cs.GetBlockBytes(dst.buf, dst.offsets, i, decoder)
 	return dst, blockOffset
 }
 
-func (cs *CompressedBytesSlice) DecompressBlockBytes(dst []byte, dstOffsets []int, i int, decoder any) ([]byte, []int, int) {
+func (cs *CompressedBytesSlice) GetBlockBytes(dst []byte, dstOffsets []int, i int, decoder any) ([]byte, []int, int) {
 	if len(cs.bufBlockOffsets) != len(cs.offsets.blockOffsets) {
 		panic("invalid block offsets")
 	}
@@ -276,7 +276,7 @@ func (cs *CompressedBytesSlice) DecompressBlockBytes(dst []byte, dstOffsets []in
 
 	blockOffsetPos := len(dstOffsets)
 	firstBlockOffset := len(dst)
-	dstOffsets, _ = cs.offsets.DecompressBlock(dstOffsets, i)
+	dstOffsets, _ = cs.offsets.GetBlock(dstOffsets, i)
 	// Fix offsets
 	if delta := dstOffsets[blockOffsetPos] - firstBlockOffset; delta != 0 {
 		for j := blockOffsetPos; j < len(dstOffsets); j++ {

@@ -14,7 +14,7 @@ type PackType interface {
 
 {{- $dp := .}}
 
-func compressGroupDeltaAppend[T PackType](out []uint64, in *[64]T, initvalue T) ([]uint64, int, int, int) {
+func compressGroupDeltaAppend[T PackType](out []uint64, in *[64]T, blockOffsetValue T) ([]uint64, int, int, int) {
 	var mask uint64
 	var {{ range $dpn := $dp.Dpn }}{{$dpn.Comma}}{{$dpn.ZZDVar}}{{end}} uint64
 	if unsafe.Sizeof(in[0]) == 8 {
@@ -57,7 +57,7 @@ func compressGroupDeltaAppend[T PackType](out []uint64, in *[64]T, initvalue T) 
 	}
 }
 
-func decompressGroupDeltaAppend[T PackType](out []T, in []uint64, initvalue T, bitlen, ntz int) []T {
+func decompressGroupDeltaAppend[T PackType](out []T, in []uint64, blockOffsetValue T, bitlen, ntz int) []T {
 	from := len(out)
 	if cap(out) - len(out) < 64 {
 		out = append(out, make([]T, 64)...)
@@ -65,28 +65,28 @@ func decompressGroupDeltaAppend[T PackType](out []T, in []uint64, initvalue T, b
 		out = out[:len(out)+64]
 	}
 
-	if unsafe.Sizeof(initvalue) == 8 {
+	if unsafe.Sizeof(blockOffsetValue) == 8 {
 		if ntz > 0 {
-			decompressGroupDeltaNtz[T, int64]((*[64]T)(out[from:]), in, initvalue, bitlen, ntz)
+			decompressGroupDeltaNtz[T, int64]((*[64]T)(out[from:]), in, blockOffsetValue, bitlen, ntz)
 		} else {
-			decompressGroupDelta[T, int64]((*[64]T)(out[from:]), in, initvalue, bitlen)
+			decompressGroupDelta[T, int64]((*[64]T)(out[from:]), in, blockOffsetValue, bitlen)
 		}
 	} else {
 		if ntz > 0 {
-			decompressGroupDeltaNtz[T, int32]((*[64]T)(out[from:]), in, initvalue, bitlen, ntz)
+			decompressGroupDeltaNtz[T, int32]((*[64]T)(out[from:]), in, blockOffsetValue, bitlen, ntz)
 		} else {
-			decompressGroupDelta[T, int32]((*[64]T)(out[from:]), in, initvalue, bitlen)
+			decompressGroupDelta[T, int32]((*[64]T)(out[from:]), in, blockOffsetValue, bitlen)
 		}
 	}
 	return out
 }
 
-func decompressGroupDelta[T PackType, IT int32|int64](out *[64]T, in []uint64, initvalue T, bitlen int) {
-	vout := *(*IT)(unsafe.Pointer(&initvalue))
+func decompressGroupDelta[T PackType, IT int32|int64](out *[64]T, in []uint64, blockOffsetValue T, bitlen int) {
+	vout := *(*IT)(unsafe.Pointer(&blockOffsetValue))
 	switch bitlen {
 	case 0:
 		{{- range $dpn := $dp.Dpn }}
-		out[{{$dpn.N}}] = initvalue
+		out[{{$dpn.N}}] = blockOffsetValue
 		{{- end }}
 	{{- range $dpn := $dp.Dpn }}
 	{{- if and (ne $dpn.N 0) (lt $dpn.N 56) }}
@@ -110,16 +110,16 @@ func decompressGroupDelta[T PackType, IT int32|int64](out *[64]T, in []uint64, i
 	}
 }
 
-func decompressGroupDeltaNtz[T PackType, IT int32|int64](out *[64]T, in []uint64, initvalue T, bitlen, ntz int) {
+func decompressGroupDeltaNtz[T PackType, IT int32|int64](out *[64]T, in []uint64, blockOffsetValue T, bitlen, ntz int) {
 	if ntz < 0 || ntz > 63 {
 		panic("invalid ntz")
 	}
 
-	vout := *(*IT)(unsafe.Pointer(&initvalue))
+	vout := *(*IT)(unsafe.Pointer(&blockOffsetValue))
 	switch bitlen - ntz {
 	case 0:
 		{{- range $dpn := $dp.Dpn }}
-		out[{{$dpn.N}}] = initvalue
+		out[{{$dpn.N}}] = blockOffsetValue
 		{{- end }}
 	{{- range $dpn := $dp.Dpn }}
 	{{- if and (ne $dpn.N 0) (lt $dpn.N 56) }}
@@ -143,7 +143,7 @@ func decompressGroupDeltaNtz[T PackType, IT int32|int64](out *[64]T, in []uint64
 	}
 }
 
-func compressGroupXorAppend[T PackType](out []uint64, in *[64]T, initvalue T, minNtz int) ([]uint64, int, int, int) {
+func compressGroupXorAppend[T PackType](out []uint64, in *[64]T, blockOffsetValue T, minNtz int) ([]uint64, int, int, int) {
 	var mask uint64
 	var {{ range $dpn := $dp.Dpn }}{{$dpn.Comma}}{{$dpn.XORVar}}{{end}} uint64
 	if unsafe.Sizeof(in[0]) == 8 {
@@ -185,7 +185,7 @@ func compressGroupXorAppend[T PackType](out []uint64, in *[64]T, initvalue T, mi
 	}
 }
 
-func decompressGroupXorAppend[T PackType](out []T, in []uint64, initvalue T, bitlen, ntz int) []T {
+func decompressGroupXorAppend[T PackType](out []T, in []uint64, blockOffsetValue T, bitlen, ntz int) []T {
 	from := len(out)
 	if cap(out) - len(out) < 64 {
 		out = append(out, make([]T, 64)...)
@@ -193,24 +193,24 @@ func decompressGroupXorAppend[T PackType](out []T, in []uint64, initvalue T, bit
 		out = out[:len(out)+64]
 	}
 
-	if unsafe.Sizeof(initvalue) == 8 {
-		decompressGroupXor[T, int64]((*[64]T)(out[from:]), in, initvalue, bitlen, ntz)
+	if unsafe.Sizeof(blockOffsetValue) == 8 {
+		decompressGroupXor[T, int64]((*[64]T)(out[from:]), in, blockOffsetValue, bitlen, ntz)
 	} else {
-		decompressGroupXor[T, int32]((*[64]T)(out[from:]), in, initvalue, bitlen, ntz)
+		decompressGroupXor[T, int32]((*[64]T)(out[from:]), in, blockOffsetValue, bitlen, ntz)
 	}
 	return out
 }
 
-func decompressGroupXor[T PackType, IT int32|int64](out *[64]T, in []uint64, initvalue T, bitlen, ntz int) {
+func decompressGroupXor[T PackType, IT int32|int64](out *[64]T, in []uint64, blockOffsetValue T, bitlen, ntz int) {
 	if ntz < 0 || ntz > 63 {
 		panic("invalid ntz")
 	}
 
-	vout := *(*IT)(unsafe.Pointer(&initvalue))
+	vout := *(*IT)(unsafe.Pointer(&blockOffsetValue))
 	switch bitlen - ntz {
 	case 0:
 		{{- range $dpn := $dp.Dpn }}
-		out[{{$dpn.N}}] = initvalue
+		out[{{$dpn.N}}] = blockOffsetValue
 		{{- end }}
 	{{- range $dpn := $dp.Dpn }}
 	{{- if and (ne $dpn.N 0) (lt $dpn.N 56) }}

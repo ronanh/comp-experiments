@@ -14,11 +14,11 @@ import (
 func TestCompressedIntBufferBasic(t *testing.T) {
 	var cs compexperiments.CompressedSlice[int]
 	var testInput = []int{16985, 17312, 17639, 17966, 18293, 18620, 18947, 19274, 19601, 19928, 20255, 20582, 20785, 21012, 21339, 21666, 21993, 22320, 22647, 22974, 23301, 23628, 23955, 24282, 24609, 24936, 25263, 25590, 25917, 26244, 26571, 26898, 27225, 27552, 27879, 28206, 28533, 28860, 29187, 29514, 29841, 30168, 30495, 30822, 31149, 31476, 31803, 32130, 32457, 32784, 33111, 33438, 33765, 34092, 34419, 34746, 35073, 35400, 35727, 36054, 36381, 36708, 37035, 37362}
-	cs = cs.Compress(testInput)
+	cs = cs.Append(testInput)
 	if cs.Len() != len(testInput) {
 		t.Fatalf("expected same len")
 	}
-	for i, v := range cs.Decompress(nil) {
+	for i, v := range cs.Get(nil) {
 		if v != testInput[i] {
 			t.Fatalf("expected same value, got %d, expected %d", v, testInput[i])
 		}
@@ -124,7 +124,7 @@ func testCompressedBuffer[T compexperiments.PackType](bufs [][]T, withMinMax boo
 	for _, buf := range bufs {
 		wantLen += len(buf)
 		wantDecompressed = append(wantDecompressed, buf...)
-		cb = cb.Compress(buf)
+		cb = cb.Append(buf)
 	}
 
 	// check Len
@@ -166,7 +166,7 @@ func testCompressedBuffer[T compexperiments.PackType](bufs [][]T, withMinMax boo
 	}
 
 	// check Decompress
-	if gotDecompressed := cb.Decompress(nil); !reflect.DeepEqual(gotDecompressed, wantDecompressed) {
+	if gotDecompressed := cb.Get(nil); !reflect.DeepEqual(gotDecompressed, wantDecompressed) {
 		t.Errorf("cb.Decompress() = %v, want %v", gotDecompressed, wantDecompressed)
 	}
 
@@ -175,7 +175,7 @@ func testCompressedBuffer[T compexperiments.PackType](bufs [][]T, withMinMax boo
 	var k int
 	for i := 0; i < cb.BlockCount(); i++ {
 		var blockPos int
-		block, blockPos = cb.DecompressBlock(block[:0], i)
+		block, blockPos = cb.GetBlock(block[:0], i)
 		for j, v := range block {
 			if j+blockPos != k {
 				t.Errorf("bad iteration")
@@ -193,7 +193,7 @@ func testCompressedBuffer[T compexperiments.PackType](bufs [][]T, withMinMax boo
 	// check reverse iteration
 	k = wantLen - 1
 	for i := cb.BlockCount() - 1; i >= 0; i-- {
-		block, blockPos := cb.DecompressBlock(block[:0], i)
+		block, blockPos := cb.GetBlock(block[:0], i)
 		for j := len(block) - 1; j >= 0; j-- {
 			if j+blockPos != k {
 				t.Errorf("bad reverse iteration")
@@ -213,7 +213,7 @@ func TestCompressBufferConstant(t *testing.T) {
 	}
 
 	var cb compexperiments.CompressedSlice[int64]
-	cb = cb.Compress(testInput)
+	cb = cb.Append(testInput)
 	if got := cb.CompressedSize(); got != 32 {
 		t.Fatalf("expected 32 bytes, got: %d", got)
 	}
@@ -226,7 +226,7 @@ func TestCompressBufferOneBit(t *testing.T) {
 	}
 
 	var cb compexperiments.CompressedSlice[int64]
-	cb = cb.Compress(testInput)
+	cb = cb.Append(testInput)
 	if got := cb.CompressedSize(); got != 40 {
 		t.Fatalf("expected 40 bytes, got: %d", got)
 	}
@@ -239,7 +239,7 @@ func TestCompressBufferTwoBit(t *testing.T) {
 	}
 
 	var cb compexperiments.CompressedSlice[int64]
-	cb = cb.Compress(testInput)
+	cb = cb.Append(testInput)
 	if got := cb.CompressedSize(); got != 40 {
 		t.Fatalf("expected 40 bytes, got: %d", got)
 	}
@@ -252,7 +252,7 @@ func TestCompressBufferNegative(t *testing.T) {
 	}
 
 	var cb compexperiments.CompressedSlice[int64]
-	cb = cb.Compress(testInput)
+	cb = cb.Append(testInput)
 	if got := cb.CompressedSize(); got != 40 {
 		t.Fatalf("expected 40 bytes, got: %d", got)
 	}
@@ -330,9 +330,9 @@ func testCompressBufferIntFull[T compexperiments.PackType](t *testing.T) {
 
 			t.Run(fmt.Sprintf("type=%T nBits=%d ntz=%d", testInput[0], nBits, ntz), func(t *testing.T) {
 				var cb compexperiments.CompressedSlice[T]
-				cb = cb.Compress(testInput)
+				cb = cb.Append(testInput)
 				// decompress
-				got := cb.Decompress(nil)
+				got := cb.Get(nil)
 
 				// check decompressed
 				if !checkEqual(got, testInput, 1) {
@@ -376,11 +376,11 @@ func testCompressFloat[T float32 | float64](t *testing.T, name string, gen func(
 	t.Run(fmt.Sprintf("name=%s type=%T precision=%f fractionBits=%d", name, testInput[0], precision, fractionBits), func(t *testing.T) {
 		var cb compexperiments.CompressedSlice[T]
 		if precision < 1 {
-			cb = cb.CompressLossy(testInput, fractionBits)
+			cb = cb.AppendLossy(testInput, fractionBits)
 		} else {
-			cb = cb.Compress(testInput)
+			cb = cb.Append(testInput)
 		}
-		got := cb.Decompress(nil)
+		got := cb.Get(nil)
 		t.Logf("bits per value: %f", float64(cb.CompressedSize())*8/float64(len(testInput)))
 
 		// check decompressed

@@ -19,10 +19,10 @@ func TestCompress(t *testing.T) {
 	}
 	defer enc.Close()
 
-	cs = cs.Compress(testInput1, enc)
+	cs = cs.Append(testInput1, enc)
 	checkExpectedInput(t, testInput1, cs)
 
-	cs = cs.Compress(testInput2, enc)
+	cs = cs.Append(testInput2, enc)
 	checkExpectedInput(t, append(testInput1, testInput2...), cs)
 }
 
@@ -51,10 +51,10 @@ func TestCompressBytes(t *testing.T) {
 	}
 	defer enc.Close()
 
-	cs = cs.CompressBytes(testInputBytes1, testInputOffsets1, enc)
+	cs = cs.AppendBytes(testInputBytes1, testInputOffsets1, enc)
 	checkExpectedInput(t, testInput1, cs)
 
-	cs = cs.CompressBytes(testInputBytes2, testInputOffsets2, enc)
+	cs = cs.AppendBytes(testInputBytes2, testInputOffsets2, enc)
 	checkExpectedInput(t, append(testInput1, testInput2...), cs)
 }
 
@@ -78,7 +78,7 @@ func checkExpectedInput(t *testing.T, expectedInput [][]byte, res compexperiment
 		dstSlice.Reset()
 		var off int
 		// check with DecompressBlock
-		dstSlice, off = res.DecompressBlock(dstSlice, i, dec)
+		dstSlice, off = res.GetBlock(dstSlice, i, dec)
 		for j := 0; j < dstSlice.Len(); j++ {
 			if !bytes.Equal(dstSlice.Value(j), expectedInput[off+j]) {
 				t.Fatalf("got %s, expected %s", dstSlice.Value(j), expectedInput[off+j])
@@ -112,7 +112,7 @@ func checkExpectedInput(t *testing.T, expectedInput [][]byte, res compexperiment
 		}
 
 		// check with DecompressBlockBytes
-		dstBuf, dstBufOff, off = res.DecompressBlockBytes(dstBuf[:0], dstBufOff[:0], i, dec)
+		dstBuf, dstBufOff, off = res.GetBlockBytes(dstBuf[:0], dstBufOff[:0], i, dec)
 		for j := 0; j < len(dstBufOff); j++ {
 			endOff := len(dstBuf)
 			if j+1 < len(dstBufOff) {
@@ -126,7 +126,7 @@ func checkExpectedInput(t *testing.T, expectedInput [][]byte, res compexperiment
 
 	// Decompression in one go
 	dstSlice.Reset()
-	dstSlice = res.Decompress(dstSlice, dec)
+	dstSlice = res.Get(dstSlice, dec)
 	// check len
 	if dstSlice.Len() != len(expectedInput) {
 		t.Fatalf("got %d, expected %d", dstSlice.Len(), len(expectedInput))
@@ -138,7 +138,7 @@ func checkExpectedInput(t *testing.T, expectedInput [][]byte, res compexperiment
 	}
 
 	// Decompression in one go with Bytes
-	dstBuf, dstBufOff = res.DecompressBytes(dstBuf[:0], dstBufOff[:0], dec)
+	dstBuf, dstBufOff = res.GetBytes(dstBuf[:0], dstBufOff[:0], dec)
 	// check len
 	if len(dstBufOff) != len(expectedInput) {
 		t.Fatalf("got %d, expected %d", len(dstBufOff), len(expectedInput))
@@ -178,7 +178,7 @@ func TestCompressBytes2(t *testing.T) {
 				testInputBytes = append(testInputBytes, v...)
 				curOffset += len(v)
 			}
-			cs = cs.CompressBytes(testInputBytes, testInputOffsets, enc)
+			cs = cs.AppendBytes(testInputBytes, testInputOffsets, enc)
 		}
 	}
 }

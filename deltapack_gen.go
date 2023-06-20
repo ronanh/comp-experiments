@@ -12,11 +12,11 @@ type PackType interface {
 	~int | ~int32 | ~uint32 | ~int64 | ~uint64 | ~float32 | ~float64
 }
 
-func compressGroupDeltaAppend[T PackType](out []uint64, in *[64]T, initvalue T) ([]uint64, int, int, int) {
+func compressGroupDeltaAppend[T PackType](out []uint64, in *[64]T, blockOffsetValue T) ([]uint64, int, int, int) {
 	var mask uint64
 	var zzd00, zzd01, zzd02, zzd03, zzd04, zzd05, zzd06, zzd07, zzd08, zzd09, zzd10, zzd11, zzd12, zzd13, zzd14, zzd15, zzd16, zzd17, zzd18, zzd19, zzd20, zzd21, zzd22, zzd23, zzd24, zzd25, zzd26, zzd27, zzd28, zzd29, zzd30, zzd31, zzd32, zzd33, zzd34, zzd35, zzd36, zzd37, zzd38, zzd39, zzd40, zzd41, zzd42, zzd43, zzd44, zzd45, zzd46, zzd47, zzd48, zzd49, zzd50, zzd51, zzd52, zzd53, zzd54, zzd55, zzd56, zzd57, zzd58, zzd59, zzd60, zzd61, zzd62, zzd63 uint64
 	if unsafe.Sizeof(in[0]) == 8 {
-		zzd00 = uint64(((*(*int64)(unsafe.Pointer(&in[0])) - *(*int64)(unsafe.Pointer(&initvalue))) << 1) ^ ((*(*int64)(unsafe.Pointer(&in[0])) - *(*int64)(unsafe.Pointer(&initvalue))) >> 63))
+		zzd00 = uint64(((*(*int64)(unsafe.Pointer(&in[0])) - *(*int64)(unsafe.Pointer(&blockOffsetValue))) << 1) ^ ((*(*int64)(unsafe.Pointer(&in[0])) - *(*int64)(unsafe.Pointer(&blockOffsetValue))) >> 63))
 		mask |= zzd00
 		zzd01 = uint64(((*(*int64)(unsafe.Pointer(&in[1])) - *(*int64)(unsafe.Pointer(&in[0]))) << 1) ^ ((*(*int64)(unsafe.Pointer(&in[1])) - *(*int64)(unsafe.Pointer(&in[0]))) >> 63))
 		mask |= zzd01
@@ -145,7 +145,7 @@ func compressGroupDeltaAppend[T PackType](out []uint64, in *[64]T, initvalue T) 
 		zzd63 = uint64(((*(*int64)(unsafe.Pointer(&in[63])) - *(*int64)(unsafe.Pointer(&in[62]))) << 1) ^ ((*(*int64)(unsafe.Pointer(&in[63])) - *(*int64)(unsafe.Pointer(&in[62]))) >> 63))
 		mask |= zzd63
 	} else {
-		zzd00 = uint64(((int64(*(*int32)(unsafe.Pointer(&in[0])) - *(*int32)(unsafe.Pointer(&initvalue)))) << 1) ^ ((int64(*(*int32)(unsafe.Pointer(&in[0])) - *(*int32)(unsafe.Pointer(&initvalue)))) >> 63))
+		zzd00 = uint64(((int64(*(*int32)(unsafe.Pointer(&in[0])) - *(*int32)(unsafe.Pointer(&blockOffsetValue)))) << 1) ^ ((int64(*(*int32)(unsafe.Pointer(&in[0])) - *(*int32)(unsafe.Pointer(&blockOffsetValue)))) >> 63))
 		mask |= zzd00
 		zzd01 = uint64(((int64(*(*int32)(unsafe.Pointer(&in[1])) - *(*int32)(unsafe.Pointer(&in[0])))) << 1) ^ ((int64(*(*int32)(unsafe.Pointer(&in[1])) - *(*int32)(unsafe.Pointer(&in[0])))) >> 63))
 		mask |= zzd01
@@ -3647,7 +3647,7 @@ func compressGroupDeltaAppend[T PackType](out []uint64, in *[64]T, initvalue T) 
 	}
 }
 
-func decompressGroupDeltaAppend[T PackType](out []T, in []uint64, initvalue T, bitlen, ntz int) []T {
+func decompressGroupDeltaAppend[T PackType](out []T, in []uint64, blockOffsetValue T, bitlen, ntz int) []T {
 	from := len(out)
 	if cap(out)-len(out) < 64 {
 		out = append(out, make([]T, 64)...)
@@ -3655,90 +3655,90 @@ func decompressGroupDeltaAppend[T PackType](out []T, in []uint64, initvalue T, b
 		out = out[:len(out)+64]
 	}
 
-	if unsafe.Sizeof(initvalue) == 8 {
+	if unsafe.Sizeof(blockOffsetValue) == 8 {
 		if ntz > 0 {
-			decompressGroupDeltaNtz[T, int64]((*[64]T)(out[from:]), in, initvalue, bitlen, ntz)
+			decompressGroupDeltaNtz[T, int64]((*[64]T)(out[from:]), in, blockOffsetValue, bitlen, ntz)
 		} else {
-			decompressGroupDelta[T, int64]((*[64]T)(out[from:]), in, initvalue, bitlen)
+			decompressGroupDelta[T, int64]((*[64]T)(out[from:]), in, blockOffsetValue, bitlen)
 		}
 	} else {
 		if ntz > 0 {
-			decompressGroupDeltaNtz[T, int32]((*[64]T)(out[from:]), in, initvalue, bitlen, ntz)
+			decompressGroupDeltaNtz[T, int32]((*[64]T)(out[from:]), in, blockOffsetValue, bitlen, ntz)
 		} else {
-			decompressGroupDelta[T, int32]((*[64]T)(out[from:]), in, initvalue, bitlen)
+			decompressGroupDelta[T, int32]((*[64]T)(out[from:]), in, blockOffsetValue, bitlen)
 		}
 	}
 	return out
 }
 
-func decompressGroupDelta[T PackType, IT int32 | int64](out *[64]T, in []uint64, initvalue T, bitlen int) {
-	vout := *(*IT)(unsafe.Pointer(&initvalue))
+func decompressGroupDelta[T PackType, IT int32 | int64](out *[64]T, in []uint64, blockOffsetValue T, bitlen int) {
+	vout := *(*IT)(unsafe.Pointer(&blockOffsetValue))
 	switch bitlen {
 	case 0:
-		out[0] = initvalue
-		out[1] = initvalue
-		out[2] = initvalue
-		out[3] = initvalue
-		out[4] = initvalue
-		out[5] = initvalue
-		out[6] = initvalue
-		out[7] = initvalue
-		out[8] = initvalue
-		out[9] = initvalue
-		out[10] = initvalue
-		out[11] = initvalue
-		out[12] = initvalue
-		out[13] = initvalue
-		out[14] = initvalue
-		out[15] = initvalue
-		out[16] = initvalue
-		out[17] = initvalue
-		out[18] = initvalue
-		out[19] = initvalue
-		out[20] = initvalue
-		out[21] = initvalue
-		out[22] = initvalue
-		out[23] = initvalue
-		out[24] = initvalue
-		out[25] = initvalue
-		out[26] = initvalue
-		out[27] = initvalue
-		out[28] = initvalue
-		out[29] = initvalue
-		out[30] = initvalue
-		out[31] = initvalue
-		out[32] = initvalue
-		out[33] = initvalue
-		out[34] = initvalue
-		out[35] = initvalue
-		out[36] = initvalue
-		out[37] = initvalue
-		out[38] = initvalue
-		out[39] = initvalue
-		out[40] = initvalue
-		out[41] = initvalue
-		out[42] = initvalue
-		out[43] = initvalue
-		out[44] = initvalue
-		out[45] = initvalue
-		out[46] = initvalue
-		out[47] = initvalue
-		out[48] = initvalue
-		out[49] = initvalue
-		out[50] = initvalue
-		out[51] = initvalue
-		out[52] = initvalue
-		out[53] = initvalue
-		out[54] = initvalue
-		out[55] = initvalue
-		out[56] = initvalue
-		out[57] = initvalue
-		out[58] = initvalue
-		out[59] = initvalue
-		out[60] = initvalue
-		out[61] = initvalue
-		out[62] = initvalue
-		out[63] = initvalue
+		out[0] = blockOffsetValue
+		out[1] = blockOffsetValue
+		out[2] = blockOffsetValue
+		out[3] = blockOffsetValue
+		out[4] = blockOffsetValue
+		out[5] = blockOffsetValue
+		out[6] = blockOffsetValue
+		out[7] = blockOffsetValue
+		out[8] = blockOffsetValue
+		out[9] = blockOffsetValue
+		out[10] = blockOffsetValue
+		out[11] = blockOffsetValue
+		out[12] = blockOffsetValue
+		out[13] = blockOffsetValue
+		out[14] = blockOffsetValue
+		out[15] = blockOffsetValue
+		out[16] = blockOffsetValue
+		out[17] = blockOffsetValue
+		out[18] = blockOffsetValue
+		out[19] = blockOffsetValue
+		out[20] = blockOffsetValue
+		out[21] = blockOffsetValue
+		out[22] = blockOffsetValue
+		out[23] = blockOffsetValue
+		out[24] = blockOffsetValue
+		out[25] = blockOffsetValue
+		out[26] = blockOffsetValue
+		out[27] = blockOffsetValue
+		out[28] = blockOffsetValue
+		out[29] = blockOffsetValue
+		out[30] = blockOffsetValue
+		out[31] = blockOffsetValue
+		out[32] = blockOffsetValue
+		out[33] = blockOffsetValue
+		out[34] = blockOffsetValue
+		out[35] = blockOffsetValue
+		out[36] = blockOffsetValue
+		out[37] = blockOffsetValue
+		out[38] = blockOffsetValue
+		out[39] = blockOffsetValue
+		out[40] = blockOffsetValue
+		out[41] = blockOffsetValue
+		out[42] = blockOffsetValue
+		out[43] = blockOffsetValue
+		out[44] = blockOffsetValue
+		out[45] = blockOffsetValue
+		out[46] = blockOffsetValue
+		out[47] = blockOffsetValue
+		out[48] = blockOffsetValue
+		out[49] = blockOffsetValue
+		out[50] = blockOffsetValue
+		out[51] = blockOffsetValue
+		out[52] = blockOffsetValue
+		out[53] = blockOffsetValue
+		out[54] = blockOffsetValue
+		out[55] = blockOffsetValue
+		out[56] = blockOffsetValue
+		out[57] = blockOffsetValue
+		out[58] = blockOffsetValue
+		out[59] = blockOffsetValue
+		out[60] = blockOffsetValue
+		out[61] = blockOffsetValue
+		out[62] = blockOffsetValue
+		out[63] = blockOffsetValue
 	case 1:
 		in2 := (*[1]uint64)(in)
 		vout += IT((-(((in2[0] >> 0) & 0x1) & 1)) ^ (((in2[0] >> 0) & 0x1) >> 1))
@@ -10963,78 +10963,78 @@ func decompressGroupDelta[T PackType, IT int32 | int64](out *[64]T, in []uint64,
 	}
 }
 
-func decompressGroupDeltaNtz[T PackType, IT int32 | int64](out *[64]T, in []uint64, initvalue T, bitlen, ntz int) {
+func decompressGroupDeltaNtz[T PackType, IT int32 | int64](out *[64]T, in []uint64, blockOffsetValue T, bitlen, ntz int) {
 	if ntz < 0 || ntz > 63 {
 		panic("invalid ntz")
 	}
 
-	vout := *(*IT)(unsafe.Pointer(&initvalue))
+	vout := *(*IT)(unsafe.Pointer(&blockOffsetValue))
 	switch bitlen - ntz {
 	case 0:
-		out[0] = initvalue
-		out[1] = initvalue
-		out[2] = initvalue
-		out[3] = initvalue
-		out[4] = initvalue
-		out[5] = initvalue
-		out[6] = initvalue
-		out[7] = initvalue
-		out[8] = initvalue
-		out[9] = initvalue
-		out[10] = initvalue
-		out[11] = initvalue
-		out[12] = initvalue
-		out[13] = initvalue
-		out[14] = initvalue
-		out[15] = initvalue
-		out[16] = initvalue
-		out[17] = initvalue
-		out[18] = initvalue
-		out[19] = initvalue
-		out[20] = initvalue
-		out[21] = initvalue
-		out[22] = initvalue
-		out[23] = initvalue
-		out[24] = initvalue
-		out[25] = initvalue
-		out[26] = initvalue
-		out[27] = initvalue
-		out[28] = initvalue
-		out[29] = initvalue
-		out[30] = initvalue
-		out[31] = initvalue
-		out[32] = initvalue
-		out[33] = initvalue
-		out[34] = initvalue
-		out[35] = initvalue
-		out[36] = initvalue
-		out[37] = initvalue
-		out[38] = initvalue
-		out[39] = initvalue
-		out[40] = initvalue
-		out[41] = initvalue
-		out[42] = initvalue
-		out[43] = initvalue
-		out[44] = initvalue
-		out[45] = initvalue
-		out[46] = initvalue
-		out[47] = initvalue
-		out[48] = initvalue
-		out[49] = initvalue
-		out[50] = initvalue
-		out[51] = initvalue
-		out[52] = initvalue
-		out[53] = initvalue
-		out[54] = initvalue
-		out[55] = initvalue
-		out[56] = initvalue
-		out[57] = initvalue
-		out[58] = initvalue
-		out[59] = initvalue
-		out[60] = initvalue
-		out[61] = initvalue
-		out[62] = initvalue
-		out[63] = initvalue
+		out[0] = blockOffsetValue
+		out[1] = blockOffsetValue
+		out[2] = blockOffsetValue
+		out[3] = blockOffsetValue
+		out[4] = blockOffsetValue
+		out[5] = blockOffsetValue
+		out[6] = blockOffsetValue
+		out[7] = blockOffsetValue
+		out[8] = blockOffsetValue
+		out[9] = blockOffsetValue
+		out[10] = blockOffsetValue
+		out[11] = blockOffsetValue
+		out[12] = blockOffsetValue
+		out[13] = blockOffsetValue
+		out[14] = blockOffsetValue
+		out[15] = blockOffsetValue
+		out[16] = blockOffsetValue
+		out[17] = blockOffsetValue
+		out[18] = blockOffsetValue
+		out[19] = blockOffsetValue
+		out[20] = blockOffsetValue
+		out[21] = blockOffsetValue
+		out[22] = blockOffsetValue
+		out[23] = blockOffsetValue
+		out[24] = blockOffsetValue
+		out[25] = blockOffsetValue
+		out[26] = blockOffsetValue
+		out[27] = blockOffsetValue
+		out[28] = blockOffsetValue
+		out[29] = blockOffsetValue
+		out[30] = blockOffsetValue
+		out[31] = blockOffsetValue
+		out[32] = blockOffsetValue
+		out[33] = blockOffsetValue
+		out[34] = blockOffsetValue
+		out[35] = blockOffsetValue
+		out[36] = blockOffsetValue
+		out[37] = blockOffsetValue
+		out[38] = blockOffsetValue
+		out[39] = blockOffsetValue
+		out[40] = blockOffsetValue
+		out[41] = blockOffsetValue
+		out[42] = blockOffsetValue
+		out[43] = blockOffsetValue
+		out[44] = blockOffsetValue
+		out[45] = blockOffsetValue
+		out[46] = blockOffsetValue
+		out[47] = blockOffsetValue
+		out[48] = blockOffsetValue
+		out[49] = blockOffsetValue
+		out[50] = blockOffsetValue
+		out[51] = blockOffsetValue
+		out[52] = blockOffsetValue
+		out[53] = blockOffsetValue
+		out[54] = blockOffsetValue
+		out[55] = blockOffsetValue
+		out[56] = blockOffsetValue
+		out[57] = blockOffsetValue
+		out[58] = blockOffsetValue
+		out[59] = blockOffsetValue
+		out[60] = blockOffsetValue
+		out[61] = blockOffsetValue
+		out[62] = blockOffsetValue
+		out[63] = blockOffsetValue
 	case 1:
 		in2 := (*[1]uint64)(in)
 		vout += IT((-((((in2[0] >> 0) & 0x1) << ntz) & 1)) ^ ((((in2[0] >> 0) & 0x1) << ntz) >> 1))
@@ -18259,11 +18259,11 @@ func decompressGroupDeltaNtz[T PackType, IT int32 | int64](out *[64]T, in []uint
 	}
 }
 
-func compressGroupXorAppend[T PackType](out []uint64, in *[64]T, initvalue T, minNtz int) ([]uint64, int, int, int) {
+func compressGroupXorAppend[T PackType](out []uint64, in *[64]T, blockOffsetValue T, minNtz int) ([]uint64, int, int, int) {
 	var mask uint64
 	var xor00, xor01, xor02, xor03, xor04, xor05, xor06, xor07, xor08, xor09, xor10, xor11, xor12, xor13, xor14, xor15, xor16, xor17, xor18, xor19, xor20, xor21, xor22, xor23, xor24, xor25, xor26, xor27, xor28, xor29, xor30, xor31, xor32, xor33, xor34, xor35, xor36, xor37, xor38, xor39, xor40, xor41, xor42, xor43, xor44, xor45, xor46, xor47, xor48, xor49, xor50, xor51, xor52, xor53, xor54, xor55, xor56, xor57, xor58, xor59, xor60, xor61, xor62, xor63 uint64
 	if unsafe.Sizeof(in[0]) == 8 {
-		xor00 = uint64(*(*int64)(unsafe.Pointer(&initvalue)) ^ *(*int64)(unsafe.Pointer(&in[0])))
+		xor00 = uint64(*(*int64)(unsafe.Pointer(&blockOffsetValue)) ^ *(*int64)(unsafe.Pointer(&in[0])))
 		mask |= xor00
 		xor01 = uint64(*(*int64)(unsafe.Pointer(&in[0])) ^ *(*int64)(unsafe.Pointer(&in[1])))
 		mask |= xor01
@@ -18392,7 +18392,7 @@ func compressGroupXorAppend[T PackType](out []uint64, in *[64]T, initvalue T, mi
 		xor63 = uint64(*(*int64)(unsafe.Pointer(&in[62])) ^ *(*int64)(unsafe.Pointer(&in[63])))
 		mask |= xor63
 	} else {
-		xor00 = uint64(uint32(*(*int32)(unsafe.Pointer(&initvalue)) ^ *(*int32)(unsafe.Pointer(&in[0]))))
+		xor00 = uint64(uint32(*(*int32)(unsafe.Pointer(&blockOffsetValue)) ^ *(*int32)(unsafe.Pointer(&in[0]))))
 		mask |= xor00
 		xor01 = uint64(uint32(*(*int32)(unsafe.Pointer(&in[0])) ^ *(*int32)(unsafe.Pointer(&in[1]))))
 		mask |= xor01
@@ -20192,7 +20192,7 @@ func compressGroupXorAppend[T PackType](out []uint64, in *[64]T, initvalue T, mi
 	}
 }
 
-func decompressGroupXorAppend[T PackType](out []T, in []uint64, initvalue T, bitlen, ntz int) []T {
+func decompressGroupXorAppend[T PackType](out []T, in []uint64, blockOffsetValue T, bitlen, ntz int) []T {
 	from := len(out)
 	if cap(out)-len(out) < 64 {
 		out = append(out, make([]T, 64)...)
@@ -20200,86 +20200,86 @@ func decompressGroupXorAppend[T PackType](out []T, in []uint64, initvalue T, bit
 		out = out[:len(out)+64]
 	}
 
-	if unsafe.Sizeof(initvalue) == 8 {
-		decompressGroupXor[T, int64]((*[64]T)(out[from:]), in, initvalue, bitlen, ntz)
+	if unsafe.Sizeof(blockOffsetValue) == 8 {
+		decompressGroupXor[T, int64]((*[64]T)(out[from:]), in, blockOffsetValue, bitlen, ntz)
 	} else {
-		decompressGroupXor[T, int32]((*[64]T)(out[from:]), in, initvalue, bitlen, ntz)
+		decompressGroupXor[T, int32]((*[64]T)(out[from:]), in, blockOffsetValue, bitlen, ntz)
 	}
 	return out
 }
 
-func decompressGroupXor[T PackType, IT int32 | int64](out *[64]T, in []uint64, initvalue T, bitlen, ntz int) {
+func decompressGroupXor[T PackType, IT int32 | int64](out *[64]T, in []uint64, blockOffsetValue T, bitlen, ntz int) {
 	if ntz < 0 || ntz > 63 {
 		panic("invalid ntz")
 	}
 
-	vout := *(*IT)(unsafe.Pointer(&initvalue))
+	vout := *(*IT)(unsafe.Pointer(&blockOffsetValue))
 	switch bitlen - ntz {
 	case 0:
-		out[0] = initvalue
-		out[1] = initvalue
-		out[2] = initvalue
-		out[3] = initvalue
-		out[4] = initvalue
-		out[5] = initvalue
-		out[6] = initvalue
-		out[7] = initvalue
-		out[8] = initvalue
-		out[9] = initvalue
-		out[10] = initvalue
-		out[11] = initvalue
-		out[12] = initvalue
-		out[13] = initvalue
-		out[14] = initvalue
-		out[15] = initvalue
-		out[16] = initvalue
-		out[17] = initvalue
-		out[18] = initvalue
-		out[19] = initvalue
-		out[20] = initvalue
-		out[21] = initvalue
-		out[22] = initvalue
-		out[23] = initvalue
-		out[24] = initvalue
-		out[25] = initvalue
-		out[26] = initvalue
-		out[27] = initvalue
-		out[28] = initvalue
-		out[29] = initvalue
-		out[30] = initvalue
-		out[31] = initvalue
-		out[32] = initvalue
-		out[33] = initvalue
-		out[34] = initvalue
-		out[35] = initvalue
-		out[36] = initvalue
-		out[37] = initvalue
-		out[38] = initvalue
-		out[39] = initvalue
-		out[40] = initvalue
-		out[41] = initvalue
-		out[42] = initvalue
-		out[43] = initvalue
-		out[44] = initvalue
-		out[45] = initvalue
-		out[46] = initvalue
-		out[47] = initvalue
-		out[48] = initvalue
-		out[49] = initvalue
-		out[50] = initvalue
-		out[51] = initvalue
-		out[52] = initvalue
-		out[53] = initvalue
-		out[54] = initvalue
-		out[55] = initvalue
-		out[56] = initvalue
-		out[57] = initvalue
-		out[58] = initvalue
-		out[59] = initvalue
-		out[60] = initvalue
-		out[61] = initvalue
-		out[62] = initvalue
-		out[63] = initvalue
+		out[0] = blockOffsetValue
+		out[1] = blockOffsetValue
+		out[2] = blockOffsetValue
+		out[3] = blockOffsetValue
+		out[4] = blockOffsetValue
+		out[5] = blockOffsetValue
+		out[6] = blockOffsetValue
+		out[7] = blockOffsetValue
+		out[8] = blockOffsetValue
+		out[9] = blockOffsetValue
+		out[10] = blockOffsetValue
+		out[11] = blockOffsetValue
+		out[12] = blockOffsetValue
+		out[13] = blockOffsetValue
+		out[14] = blockOffsetValue
+		out[15] = blockOffsetValue
+		out[16] = blockOffsetValue
+		out[17] = blockOffsetValue
+		out[18] = blockOffsetValue
+		out[19] = blockOffsetValue
+		out[20] = blockOffsetValue
+		out[21] = blockOffsetValue
+		out[22] = blockOffsetValue
+		out[23] = blockOffsetValue
+		out[24] = blockOffsetValue
+		out[25] = blockOffsetValue
+		out[26] = blockOffsetValue
+		out[27] = blockOffsetValue
+		out[28] = blockOffsetValue
+		out[29] = blockOffsetValue
+		out[30] = blockOffsetValue
+		out[31] = blockOffsetValue
+		out[32] = blockOffsetValue
+		out[33] = blockOffsetValue
+		out[34] = blockOffsetValue
+		out[35] = blockOffsetValue
+		out[36] = blockOffsetValue
+		out[37] = blockOffsetValue
+		out[38] = blockOffsetValue
+		out[39] = blockOffsetValue
+		out[40] = blockOffsetValue
+		out[41] = blockOffsetValue
+		out[42] = blockOffsetValue
+		out[43] = blockOffsetValue
+		out[44] = blockOffsetValue
+		out[45] = blockOffsetValue
+		out[46] = blockOffsetValue
+		out[47] = blockOffsetValue
+		out[48] = blockOffsetValue
+		out[49] = blockOffsetValue
+		out[50] = blockOffsetValue
+		out[51] = blockOffsetValue
+		out[52] = blockOffsetValue
+		out[53] = blockOffsetValue
+		out[54] = blockOffsetValue
+		out[55] = blockOffsetValue
+		out[56] = blockOffsetValue
+		out[57] = blockOffsetValue
+		out[58] = blockOffsetValue
+		out[59] = blockOffsetValue
+		out[60] = blockOffsetValue
+		out[61] = blockOffsetValue
+		out[62] = blockOffsetValue
+		out[63] = blockOffsetValue
 	case 1:
 		in2 := (*[1]uint64)(in)
 		vout ^= IT(((in2[0] >> 0) & 0x1) << ntz)
