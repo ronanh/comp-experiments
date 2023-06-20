@@ -17,18 +17,18 @@ type CompressedSlice[T PackType] struct {
 	// uncompressed tail
 	tail []T
 	// block offsets
-	blockOffsets []int
+	blockOffsets []int64
 	// optional min and max values
 	minMax []minMax[T]
 }
 
-func (cs *CompressedSlice[T]) Import(buf []uint64, tail []T, blockOffsets []int, minMax []minMax[T]) {
+func (cs *CompressedSlice[T]) Import(buf []uint64, tail []T, blockOffsets []int64, minMax []minMax[T]) {
 	cs.buf = buf
 	cs.tail = tail
 	cs.blockOffsets = blockOffsets
 }
 
-func (cs *CompressedSlice[T]) Export() ([]uint64, []T, []int, []minMax[T]) {
+func (cs *CompressedSlice[T]) Export() ([]uint64, []T, []int64, []minMax[T]) {
 	return cs.buf, cs.tail, cs.blockOffsets, cs.minMax
 }
 
@@ -167,7 +167,7 @@ func (cs CompressedSlice[T]) append(src []T, minNtz int) CompressedSlice[T] {
 func (cs *CompressedSlice[T]) appendBlock(block []T, minNtz int) {
 	blockOffsetvalue := block[0]
 	var bh BlockHeader
-	BlockHeaderPos := len(cs.buf)
+	BlockHeaderPos := int64(len(cs.buf))
 	// append block header (blockOffsetValue + block header)
 	cs.buf = append(cs.buf, *(*uint64)(unsafe.Pointer(&blockOffsetvalue)))
 	cs.buf = append(cs.buf, bh[:]...)
@@ -220,7 +220,7 @@ func (cs *CompressedSlice[T]) GetBlock(dst []T, i int) ([]T, int) {
 		blockOffset := cs.blockOffsets[i]
 		blockOffsetvalue := *(*T)(unsafe.Pointer(&cs.buf[blockOffset]))
 		bh := *(*BlockHeader)(cs.buf[blockOffset+1:])
-		in := cs.buf[cs.blockOffsets[i]+1+len(bh):]
+		in := cs.buf[cs.blockOffsets[i]+1+int64(len(bh)):]
 		nbGroups := bh.GroupCount()
 		for i := 0; i < nbGroups; i++ {
 			bitlen, ntz := bh.GetGroup(i)

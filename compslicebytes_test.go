@@ -29,18 +29,18 @@ func TestCompress(t *testing.T) {
 func TestCompressBytes(t *testing.T) {
 	testInput1, testInput2 := genTestInputs(1000), genTestInputs(1000)
 	var testInputBytes1, testInputBytes2 []byte
-	var testInputOffsets1, testInputOffsets2 []int
-	var curOffset int
+	var testInputOffsets1, testInputOffsets2 []int64
+	var curOffset int64
 	for _, v := range testInput1 {
 		testInputOffsets1 = append(testInputOffsets1, curOffset)
 		testInputBytes1 = append(testInputBytes1, v...)
-		curOffset += len(v)
+		curOffset += int64(len(v))
 	}
 	curOffset = 0
 	for _, v := range testInput2 {
 		testInputOffsets2 = append(testInputOffsets2, curOffset)
 		testInputBytes2 = append(testInputBytes2, v...)
-		curOffset += len(v)
+		curOffset += int64(len(v))
 	}
 
 	var cs compexperiments.CompressedBytesSlice
@@ -70,7 +70,7 @@ func checkExpectedInput(t *testing.T, expectedInput [][]byte, res compexperiment
 	}
 	var dstSlice compexperiments.BytesSlice
 	var dstBuf []byte
-	var dstBufOff []int
+	var dstBufOff []int64
 	var values [][]byte
 
 	// Decompression by block
@@ -101,7 +101,7 @@ func checkExpectedInput(t *testing.T, expectedInput [][]byte, res compexperiment
 		{
 			dstBuf, dstBufOff := dstSlice.ValuesBytes()
 			for j := 0; j < len(dstBufOff); j++ {
-				endOff := len(dstBuf)
+				endOff := int64(len(dstBuf))
 				if j+1 < len(dstBufOff) {
 					endOff = dstBufOff[j+1]
 				}
@@ -114,7 +114,7 @@ func checkExpectedInput(t *testing.T, expectedInput [][]byte, res compexperiment
 		// check with DecompressBlockBytes
 		dstBuf, dstBufOff, off = res.GetBlockBytes(dstBuf[:0], dstBufOff[:0], i, dec)
 		for j := 0; j < len(dstBufOff); j++ {
-			endOff := len(dstBuf)
+			endOff := int64(len(dstBuf))
 			if j+1 < len(dstBufOff) {
 				endOff = dstBufOff[j+1]
 			}
@@ -144,7 +144,7 @@ func checkExpectedInput(t *testing.T, expectedInput [][]byte, res compexperiment
 		t.Fatalf("got %d, expected %d", len(dstBufOff), len(expectedInput))
 	}
 	for i := 0; i < len(dstBufOff); i++ {
-		endOff := len(dstBuf)
+		endOff := int64(len(dstBuf))
 		if i+1 < len(dstBufOff) {
 			endOff = dstBufOff[i+1]
 		}
@@ -171,12 +171,12 @@ func TestCompressBytes2(t *testing.T) {
 			testInput := genTestInputs(rand.Intn(maxInputSize))
 
 			var testInputBytes []byte
-			var testInputOffsets []int
-			var curOffset int
+			var testInputOffsets []int64
+			var curOffset int64
 			for _, v := range testInput {
 				testInputOffsets = append(testInputOffsets, curOffset)
 				testInputBytes = append(testInputBytes, v...)
-				curOffset += len(v)
+				curOffset += int64(len(v))
 			}
 			cs = cs.AppendBytes(testInputBytes, testInputOffsets, enc)
 		}
