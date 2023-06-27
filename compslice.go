@@ -58,6 +58,28 @@ func (cs *CompressedSlice[T]) MemSize() int {
 	return int(unsafe.Sizeof(cs)) + cap(cs.buf)*8 + cap(cs.tail)*int(unsafe.Sizeof(T(0))) + cap(cs.blockOffsets)*8 + cap(cs.minMax)*int(unsafe.Sizeof(minMax[T]{}))
 }
 
+func (cs *CompressedSlice[T]) FirstValue() T {
+	if len(cs.blockOffsets) > 0 {
+		return *(*T)(unsafe.Pointer(&cs.buf[0]))
+	}
+	if len(cs.tail) > 0 {
+		return cs.tail[0]
+	}
+	panic("empty slice")
+}
+
+func (cs *CompressedSlice[T]) LastValue() T {
+	if len(cs.tail) > 0 {
+		return cs.tail[len(cs.tail)-1]
+	}
+	if len(cs.blockOffsets) > 0 {
+		// need to uncompressed last block
+		lastBlock, _ := cs.GetBlock(nil, len(cs.blockOffsets)-1)
+		return lastBlock[len(lastBlock)-1]
+	}
+	panic("empty slice")
+}
+
 func (cs *CompressedSlice[T]) IsBlockCompressed(i int) bool {
 	return i < len(cs.blockOffsets)
 }
