@@ -204,6 +204,16 @@ func testCompressedBuffer[T compexperiments.PackType](bufs [][]T, withMinMax boo
 			k--
 		}
 	}
+
+	// check AppendOne
+	var cb2 compexperiments.CompressedSlice[T]
+	for _, v := range wantDecompressed {
+		cb2 = cb2.AppendOne(v)
+	}
+	if gotDecompressed := cb2.Get(nil); !reflect.DeepEqual(gotDecompressed, wantDecompressed) {
+		t.Errorf("cb2.Decompress() = %v, want %v", gotDecompressed, wantDecompressed)
+	}
+
 }
 
 func TestCompressBufferConstant(t *testing.T) {
@@ -386,6 +396,20 @@ func testCompressFloat[T float32 | float64](t *testing.T, name string, gen func(
 		// check decompressed
 		if !checkEqual(got, testInput, precision) {
 			t.Errorf("cb.Decompress() = %v\n--- Want %v", got, testInput)
+		}
+
+		// check appendOne
+		var cb2 compexperiments.CompressedSlice[T]
+		for _, v := range testInput {
+			if precision < 1 {
+				cb2 = cb2.AppendOneLossy(v, fractionBits)
+			} else {
+				cb2 = cb2.AppendOne(v)
+			}
+		}
+		got = cb2.Get(nil)
+		if !checkEqual(got, testInput, precision) {
+			t.Errorf("cb.AppendOne() = %v\n--- Want %v", got, testInput)
 		}
 	})
 }
