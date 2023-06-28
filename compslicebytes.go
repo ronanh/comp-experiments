@@ -180,8 +180,8 @@ func (cs CompressedBytesSlice) AppendOne(src []byte, encoder any) CompressedByte
 	wasCompressed := cs.offsets.IsBlockCompressed(lastBlock)
 
 	// append offset
-	cs.lastOffset = cs.lastOffset + int64(len(src))
 	cs.offsets = cs.offsets.AppendOne(cs.lastOffset)
+	cs.lastOffset += int64(len(src))
 
 	// append to src to tail
 	cs.tail = append(cs.tail, src...)

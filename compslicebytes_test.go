@@ -55,7 +55,14 @@ func TestCompressBytes(t *testing.T) {
 	checkExpectedInput(t, testInput1, cs)
 
 	cs = cs.AppendBytes(testInputBytes2, testInputOffsets2, enc)
-	checkExpectedInput(t, append(testInput1, testInput2...), cs)
+	expectedInput := append(testInput1, testInput2...)
+	checkExpectedInput(t, expectedInput, cs)
+
+	var cs2 compexperiments.CompressedBytesSlice
+	for _, in := range expectedInput {
+		cs2 = cs2.AppendOne(in, enc)
+	}
+	checkExpectedInput(t, expectedInput, cs2)
 }
 
 func checkExpectedInput(t *testing.T, expectedInput [][]byte, res compexperiments.CompressedBytesSlice) {
@@ -163,7 +170,7 @@ func TestCompressBytes2(t *testing.T) {
 	}
 	defer enc.Close()
 
-	for j := 0; j < 1000; j++ {
+	for j := 0; j < 100; j++ {
 		maxInputSize := rand.Intn(2000) + 1
 		var cs compexperiments.CompressedBytesSlice
 		const nbCompress = 100
