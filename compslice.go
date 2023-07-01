@@ -138,7 +138,8 @@ func (cs *CompressedSlice[T]) BlockMinMax(i int) (T, T) {
 }
 
 func (cs CompressedSlice[T]) Append(src []T) CompressedSlice[T] {
-	return cs.append(src, 0)
+	cs.add(src, 0)
+	return cs
 }
 
 func (cs CompressedSlice[T]) AppendLossy(src []T, maxBits int) CompressedSlice[T] {
@@ -146,11 +147,13 @@ func (cs CompressedSlice[T]) AppendLossy(src []T, maxBits int) CompressedSlice[T
 	if minNtz < 1 {
 		panic("maxBits too large")
 	}
-	return cs.append(src, minNtz)
+	cs.add(src, minNtz)
+	return cs
 }
 
 func (cs CompressedSlice[T]) AppendOne(src T) CompressedSlice[T] {
-	return cs.appendOne(src, 0)
+	cs.addOne(src, 0)
+	return cs
 }
 
 func (cs CompressedSlice[T]) AppendOneLossy(src T, maxBits int) CompressedSlice[T] {
@@ -158,10 +161,35 @@ func (cs CompressedSlice[T]) AppendOneLossy(src T, maxBits int) CompressedSlice[
 	if minNtz < 1 {
 		panic("maxBits too large")
 	}
-	return cs.appendOne(src, minNtz)
+	cs.addOne(src, minNtz)
+	return cs
 }
 
-func (cs CompressedSlice[T]) append(src []T, minNtz int) CompressedSlice[T] {
+func (cs *CompressedSlice[T]) Add(src []T) {
+	cs.add(src, 0)
+}
+
+func (cs *CompressedSlice[T]) AddLossy(src []T, maxBits int) {
+	minNtz := cs.fractionSize() - maxBits
+	if minNtz < 1 {
+		panic("maxBits too large")
+	}
+	cs.add(src, minNtz)
+}
+
+func (cs *CompressedSlice[T]) AddOne(src T) {
+	cs.addOne(src, 0)
+}
+
+func (cs *CompressedSlice[T]) AddOneLossy(src T, maxBits int) {
+	minNtz := cs.fractionSize() - maxBits
+	if minNtz < 1 {
+		panic("maxBits too large")
+	}
+	cs.addOne(src, minNtz)
+}
+
+func (cs *CompressedSlice[T]) add(src []T, minNtz int) {
 	// Compute nbGroups:
 	// first block should have 1 group
 	// second block should have 2 groups
@@ -182,12 +210,12 @@ func (cs CompressedSlice[T]) append(src []T, minNtz int) CompressedSlice[T] {
 			src = src[appendTailCount:]
 			if len(cs.tail) == groupSize*nbGroups {
 				// tail is full, compress it
-				cs.appendBlock(cs.tail, minNtz)
+				cs.addBlock(cs.tail, minNtz)
 				cs.tail = nil
 			}
 		} else if len(src) >= groupSize*nbGroups {
 			// compress a full block
-			cs.appendBlock(src[:groupSize*nbGroups], minNtz)
+			cs.addBlock(src[:groupSize*nbGroups], minNtz)
 			src = src[groupSize*nbGroups:]
 		} else {
 			// append to tail
@@ -195,10 +223,9 @@ func (cs CompressedSlice[T]) append(src []T, minNtz int) CompressedSlice[T] {
 			src = nil
 		}
 	}
-	return cs
 }
 
-func (cs CompressedSlice[T]) appendOne(src T, minNtz int) CompressedSlice[T] {
+func (cs *CompressedSlice[T]) addOne(src T, minNtz int) {
 	nbGroups := len(cs.blockOffsets) + 1
 	if nbGroups > MaxGroups {
 		nbGroups = MaxGroups
@@ -206,14 +233,12 @@ func (cs CompressedSlice[T]) appendOne(src T, minNtz int) CompressedSlice[T] {
 	cs.tail = append(cs.tail, src)
 	if len(cs.tail) == groupSize*nbGroups {
 		// tail is full, compress it
-		cs.appendBlock(cs.tail, minNtz)
+		cs.addBlock(cs.tail, minNtz)
 		cs.tail = nil
 	}
-
-	return cs
 }
 
-func (cs *CompressedSlice[T]) appendBlock(block []T, minNtz int) {
+func (cs *CompressedSlice[T]) addBlock(block []T, minNtz int) {
 	blockOffsetvalue := block[0]
 	var bh BlockHeader
 	BlockHeaderPos := int64(len(cs.buf))

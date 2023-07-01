@@ -122,6 +122,11 @@ func (cs *CompressedBytesSlice) BlockDataLen(i int) int {
 }
 
 func (cs CompressedBytesSlice) Append(src [][]byte, encoder any) CompressedBytesSlice {
+	cs.Add(src, encoder)
+	return cs
+}
+
+func (cs *CompressedBytesSlice) Add(src [][]byte, encoder any) {
 	newOffsets := make([]int64, len(src))
 	curOffset := cs.lastOffset
 	for i, v := range src {
@@ -156,7 +161,7 @@ func (cs CompressedBytesSlice) Append(src [][]byte, encoder any) CompressedBytes
 		if int64(len(cs.tail)) != blockLen {
 			panic("invalid tail length")
 		}
-		cs.appendBlock(cs.tail, encoder)
+		cs.addBlock(cs.tail, encoder)
 		if len(originalTail) > 0 && sameSlice(cs.tail, originalTail) {
 			// should not modify the original tail data
 			cs.tail = nil
@@ -172,10 +177,14 @@ func (cs CompressedBytesSlice) Append(src [][]byte, encoder any) CompressedBytes
 	if len(cs.bufBlockOffsets) != len(cs.offsets.blockOffsets) {
 		panic("invalid block offsets")
 	}
-	return cs
 }
 
 func (cs CompressedBytesSlice) AppendOne(src []byte, encoder any) CompressedBytesSlice {
+	cs.AddOne(src, encoder)
+	return cs
+}
+
+func (cs *CompressedBytesSlice) AddOne(src []byte, encoder any) {
 	lastBlock := cs.offsets.BlockCount() - 1
 	wasCompressed := cs.offsets.IsBlockCompressed(lastBlock)
 
@@ -189,14 +198,17 @@ func (cs CompressedBytesSlice) AppendOne(src []byte, encoder any) CompressedByte
 	if cs.offsets.IsBlockCompressed(lastBlock) && !wasCompressed {
 		// one more compressed block
 		// -> compress tail
-		cs.appendBlock(cs.tail, encoder)
+		cs.addBlock(cs.tail, encoder)
 		cs.tail = nil
 	}
-
-	return cs
 }
 
 func (cs CompressedBytesSlice) AppendBytes(src []byte, offsets []int64, encoder any) CompressedBytesSlice {
+	cs.AddBytes(src, offsets, encoder)
+	return cs
+}
+
+func (cs *CompressedBytesSlice) AddBytes(src []byte, offsets []int64, encoder any) {
 	if len(cs.bufBlockOffsets) != len(cs.offsets.blockOffsets) {
 		panic("invalid block offsets")
 	}
@@ -224,7 +236,7 @@ func (cs CompressedBytesSlice) AppendBytes(src []byte, offsets []int64, encoder 
 		cs.tail = append(cs.tail, src[:appendSize]...)
 		src = src[appendSize:]
 		if cs.offsets.IsBlockCompressed(firstBlock) {
-			cs.appendBlock(cs.tail, encoder)
+			cs.addBlock(cs.tail, encoder)
 			cs.tail = nil
 		}
 	}
@@ -240,7 +252,7 @@ func (cs CompressedBytesSlice) AppendBytes(src []byte, offsets []int64, encoder 
 		}
 		blockSize := cs.BlockDataLen(i)
 
-		cs.appendBlock(src[:blockSize], encoder)
+		cs.addBlock(src[:blockSize], encoder)
 		src = src[blockSize:]
 	}
 	if len(src) > 0 {
@@ -249,10 +261,9 @@ func (cs CompressedBytesSlice) AppendBytes(src []byte, offsets []int64, encoder 
 	if len(cs.bufBlockOffsets) != len(cs.offsets.blockOffsets) {
 		panic("invalid block offsets")
 	}
-	return cs
 }
 
-func (cp *CompressedBytesSlice) appendBlock(block []byte, encoder any) {
+func (cp *CompressedBytesSlice) addBlock(block []byte, encoder any) {
 	// Compress offset block
 	cp.bufBlockOffsets = append(cp.bufBlockOffsets, int64(len(cp.buf)))
 	// compress data block
