@@ -140,7 +140,7 @@ func (cs *CompressedBytesSlice) Add(src [][]byte, encoder any) {
 	}
 	firstCompressedBlock++
 
-	cs.offsets = cs.offsets.Append(newOffsets)
+	cs.offsets.Add(newOffsets)
 	originalTail := cs.tail
 	// Use sliceOffsets new compressed blocks to add the corresponding data blocks
 	blockCount := cs.offsets.BlockCount()
@@ -188,8 +188,8 @@ func (cs *CompressedBytesSlice) AddOne(src []byte, encoder any) {
 	lastBlock := cs.offsets.BlockCount() - 1
 	wasCompressed := cs.offsets.IsBlockCompressed(lastBlock)
 
-	// append offset
-	cs.offsets = cs.offsets.AppendOne(cs.lastOffset)
+	// add offset
+	cs.offsets.AddOne(cs.lastOffset)
 	cs.lastOffset += int64(len(src))
 
 	// append to src to tail
@@ -199,7 +199,11 @@ func (cs *CompressedBytesSlice) AddOne(src []byte, encoder any) {
 		// one more compressed block
 		// -> compress tail
 		cs.addBlock(cs.tail, encoder)
-		cs.tail = nil
+		// reset tail
+		// the client is using addOne to add one value at a time
+		// so it's better to alloc preemtively a new tail to avoid
+		// reallocations
+		cs.tail = make([]byte, 0, len(cs.tail))
 	}
 }
 
@@ -222,7 +226,7 @@ func (cs *CompressedBytesSlice) AddBytes(src []byte, offsets []int64, encoder an
 			offsets[i] = cs.lastOffset + v
 		}
 	}
-	cs.offsets = cs.offsets.Append(offsets)
+	cs.offsets.Add(offsets)
 	cs.lastOffset += int64(len(src))
 
 	newBlockCount := cs.offsets.BlockCount()

@@ -234,7 +234,15 @@ func (cs *CompressedSlice[T]) addOne(src T, minNtz int) {
 	if len(cs.tail) == groupSize*nbGroups {
 		// tail is full, compress it
 		cs.addBlock(cs.tail, minNtz)
-		cs.tail = nil
+		// reset tail
+		// the client is using addOne to add one value at a time
+		// so it's better to alloc preemtively a new tail to avoid
+		// reallocations
+		nbGroups++
+		if nbGroups > MaxGroups {
+			nbGroups = MaxGroups
+		}
+		cs.tail = make([]T, 0, groupSize*nbGroups)
 	}
 }
 
