@@ -284,8 +284,8 @@ func (cs *CompressedSlice[T]) addBlock(block []T, minNtz int) {
 }
 
 func (cs *CompressedSlice[T]) Get(dst []T) []T {
-	if dst == nil {
-		dst = make([]T, 0, MaxGroups*groupSize)
+	if cap(dst) == 0 {
+		dst = make([]T, 0, cs.Len())
 	}
 	blockCount := cs.BlockCount()
 	for i := 0; i < blockCount; i++ {
@@ -295,8 +295,12 @@ func (cs *CompressedSlice[T]) Get(dst []T) []T {
 }
 
 func (cs *CompressedSlice[T]) GetBlock(dst []T, i int) ([]T, int) {
-	if dst == nil {
-		dst = make([]T, 0, MaxGroups*groupSize)
+	if cap(dst) == 0 {
+		sz := cs.Len()
+		if sz > MaxGroups*groupSize {
+			sz = MaxGroups * groupSize
+		}
+		dst = make([]T, 0, sz)
 	}
 	if i < len(cs.blockOffsets) {
 		blockOffset := cs.blockOffsets[i]
