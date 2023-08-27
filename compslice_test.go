@@ -63,6 +63,42 @@ func TestCompressedIntBuffer(t *testing.T) {
 			bufs:       [][]int{genBuf[int](0, 256+128+64+1)},
 			withMinMax: false,
 		},
+		{name: "one buffer 256+128+64",
+			bufs:       [][]int{genBuf[int](0, 256+128+64)},
+			withMinMax: false,
+		},
+		{name: "one buffer 256+128+64+1",
+			bufs:       [][]int{genBuf[int](0, 256+128+64+1)},
+			withMinMax: false,
+		},
+		{name: "one buffer 320+256+128+64",
+			bufs:       [][]int{genBuf[int](0, 320+256+128+64)},
+			withMinMax: false,
+		},
+		{name: "one buffer 320+256+128+64+1",
+			bufs:       [][]int{genBuf[int](0, 320+256+128+64+1)},
+			withMinMax: false,
+		},
+		{name: "one buffer 384+320+256+128+64",
+			bufs:       [][]int{genBuf[int](0, 384+320+256+128+64)},
+			withMinMax: false,
+		},
+		{name: "one buffer 384+320+256+128+64+1",
+			bufs:       [][]int{genBuf[int](0, 384+320+256+128+64+1)},
+			withMinMax: false,
+		},
+		{name: "one buffer 448+384+320+256+128+64",
+			bufs:       [][]int{genBuf[int](0, 448+384+320+256+128+64)},
+			withMinMax: false,
+		},
+		{name: "one buffer 448+384+320+256+128+64+1",
+			bufs:       [][]int{genBuf[int](0, 448+384+320+256+128+64+1)},
+			withMinMax: false,
+		},
+		{name: "one big buffer",
+			bufs:       [][]int{genBuf[int](0, 24164)},
+			withMinMax: false,
+		},
 		{name: "two buffers",
 			bufs:       [][]int{{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, {11, 12, 13, 14, 15, 16, 17, 18, 19, 20}},
 			withMinMax: false,
@@ -145,12 +181,24 @@ func testCompressedBuffer[T compexperiments.PackType](bufs [][]T, withMinMax boo
 	case wantLen <= 64+128:
 		wantBlockCount = 2
 		firstValuePos = 64
+	case wantLen <= 64+128+192:
+		wantBlockCount = 3
+		firstValuePos = 64 + 128
+	case wantLen <= 64+128+192+256:
+		wantBlockCount = 4
+		firstValuePos = 64 + 128 + 192
+	case wantLen <= 64+128+192+256+320:
+		wantBlockCount = 5
+		firstValuePos = 64 + 128 + 192 + 256
+	case wantLen <= 64+128+192+256+320+384:
+		wantBlockCount = 6
+		firstValuePos = 64 + 128 + 192 + 256 + 320
 	default:
-		wantBlockCount = 3 + (wantLen-128-64)/256
-		if wantBlockCount == 3 {
-			firstValuePos = 64 + 128
+		wantBlockCount = 7 + (wantLen-384-320-256-192-128-64)/512
+		if wantBlockCount == 7 {
+			firstValuePos = 64 + 128 + 192 + 256 + 320 + 384
 		} else {
-			firstValuePos = 64 + 128 + 192 + (wantBlockCount-4)*256
+			firstValuePos = 64 + 128 + 192 + 256 + 320 + 384 + 448 + (wantBlockCount-8)*512
 		}
 	}
 	if gotBlockCount := cb.BlockCount(); gotBlockCount != wantBlockCount {
@@ -182,6 +230,9 @@ func testCompressedBuffer[T compexperiments.PackType](bufs [][]T, withMinMax boo
 			}
 			if v != wantDecompressed[k] {
 				t.Errorf("bad iteration")
+			}
+			if cb.BlockNum(k) != i {
+				t.Errorf("bad block num(%d), got %d, want %d", k, cb.BlockNum(k), i)
 			}
 			k++
 		}

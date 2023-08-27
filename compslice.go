@@ -80,8 +80,8 @@ func (cs *CompressedSlice[T]) LastValue() T {
 	panic("empty slice")
 }
 
-func (cs *CompressedSlice[T]) IsBlockCompressed(i int) bool {
-	return i < len(cs.blockOffsets)
+func (cs *CompressedSlice[T]) IsBlockCompressed(iBlock int) bool {
+	return iBlock < len(cs.blockOffsets)
 }
 
 func (cs *CompressedSlice[T]) BlockCount() int {
@@ -91,37 +91,56 @@ func (cs *CompressedSlice[T]) BlockCount() int {
 	return len(cs.blockOffsets)
 }
 
-func (cs *CompressedSlice[T]) BlockLen(i int) int {
-	if i < len(cs.blockOffsets) {
-		if i < MaxGroups {
-			return (i + 1) * groupSize
+// BlockNum returns the block (iBlock) given the index in the uncompressed slice
+func (cs *CompressedSlice[T]) BlockNum(i int) int {
+	// is it in the tail?
+	ln := cs.Len()
+	if i >= ln-len(cs.tail) {
+		return len(cs.blockOffsets)
+	}
+	// is it in the first blocks (0 to MaxGroups-1)?
+	var groupOffset int
+	for g := 1; g <= MaxGroups; g++ {
+		groupOffset += g * groupSize
+		if i < groupOffset {
+			return g - 1
+		}
+	}
+	// is it in the other blocks?
+	return MaxGroups + (i-groupOffset)/(MaxGroups*groupSize)
+}
+
+func (cs *CompressedSlice[T]) BlockLen(iBlock int) int {
+	if iBlock < len(cs.blockOffsets) {
+		if iBlock < MaxGroups {
+			return (iBlock + 1) * groupSize
 		}
 		return MaxGroups * groupSize
 	}
-	if i == len(cs.blockOffsets) && len(cs.tail) > 0 {
+	if iBlock == len(cs.blockOffsets) && len(cs.tail) > 0 {
 		return len(cs.tail)
 	}
 	panic("invalid block index")
 }
 
-func (cs *CompressedSlice[T]) BlockFirstValue(i int) T {
-	if i < len(cs.blockOffsets) {
-		return *(*T)(unsafe.Pointer(&cs.buf[cs.blockOffsets[i]]))
+func (cs *CompressedSlice[T]) BlockFirstValue(iBlock int) T {
+	if iBlock < len(cs.blockOffsets) {
+		return *(*T)(unsafe.Pointer(&cs.buf[cs.blockOffsets[iBlock]]))
 	}
-	if i == len(cs.blockOffsets) && len(cs.tail) > 0 {
+	if iBlock == len(cs.blockOffsets) && len(cs.tail) > 0 {
 		return cs.tail[0]
 	}
 	panic("invalid block index")
 }
 
-func (cs *CompressedSlice[T]) BlockMinMax(i int) (T, T) {
+func (cs *CompressedSlice[T]) BlockMinMax(iBlock int) (T, T) {
 	if cs.minMax == nil {
 		panic("minmax not enabled")
 	}
-	if i < len(cs.minMax) {
-		return cs.minMax[i].min, cs.minMax[i].max
+	if iBlock < len(cs.minMax) {
+		return cs.minMax[iBlock].min, cs.minMax[iBlock].max
 	}
-	if i == len(cs.minMax) && len(cs.tail) > 0 {
+	if iBlock == len(cs.minMax) && len(cs.tail) > 0 {
 		// find min and max of tail
 		min, max := cs.tail[0], cs.tail[0]
 		for _, v := range cs.tail {
@@ -294,7 +313,7 @@ func (cs *CompressedSlice[T]) Get(dst []T) []T {
 	return dst
 }
 
-func (cs *CompressedSlice[T]) GetBlock(dst []T, i int) ([]T, int) {
+func (cs *CompressedSlice[T]) GetBlock(dst []T, iBlock int) ([]T, int) {
 	if cap(dst) == 0 {
 		sz := cs.Len()
 		if sz > MaxGroups*groupSize {
@@ -302,11 +321,11 @@ func (cs *CompressedSlice[T]) GetBlock(dst []T, i int) ([]T, int) {
 		}
 		dst = make([]T, 0, sz)
 	}
-	if i < len(cs.blockOffsets) {
-		blockOffset := cs.blockOffsets[i]
+	if iBlock < len(cs.blockOffsets) {
+		blockOffset := cs.blockOffsets[iBlock]
 		blockOffsetvalue := *(*T)(unsafe.Pointer(&cs.buf[blockOffset]))
 		bh := *(*BlockHeader)(cs.buf[blockOffset+1:])
-		in := cs.buf[cs.blockOffsets[i]+1+int64(len(bh)):]
+		in := cs.buf[cs.blockOffsets[iBlock]+1+int64(len(bh)):]
 		nbGroups := bh.GroupCount()
 		for i := 0; i < nbGroups; i++ {
 			bitlen, ntz := bh.GetGroup(i)
@@ -319,23 +338,23 @@ func (cs *CompressedSlice[T]) GetBlock(dst []T, i int) ([]T, int) {
 			blockOffsetvalue = dst[len(dst)-1]
 			in = in[bitlen-ntz:]
 		}
-		return dst, cs.blockOffset(i)
+		return dst, cs.blockOffset(iBlock)
 	}
-	if i == len(cs.blockOffsets) && len(cs.tail) > 0 {
-		return append(dst, cs.tail...), cs.blockOffset(i)
+	if iBlock == len(cs.blockOffsets) && len(cs.tail) > 0 {
+		return append(dst, cs.tail...), cs.blockOffset(iBlock)
 	}
 	panic("invalid block index")
 }
 
-func (cs *CompressedSlice[T]) blockOffset(i int) int {
+func (cs *CompressedSlice[T]) blockOffset(iBlock int) int {
 	var res int
 	for g := 1; g < MaxGroups; g++ {
-		if g > i {
+		if g > iBlock {
 			return res
 		}
 		res += g * groupSize
 	}
-	return res + (i-MaxGroups+1)*MaxGroups*groupSize
+	return res + (iBlock-MaxGroups+1)*MaxGroups*groupSize
 }
 
 func (cs CompressedSlice[T]) fractionSize() int {

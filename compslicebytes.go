@@ -101,24 +101,29 @@ func (cs *CompressedBytesSlice) MemSize() int {
 	return int(unsafe.Sizeof(cs)) + cap(cs.buf) + cap(cs.tail) + cap(cs.bufBlockOffsets)*8 + cs.offsets.MemSize()
 }
 
-func (cs *CompressedBytesSlice) IsBlockCompressed(i int) bool {
-	return cs.offsets.IsBlockCompressed(i)
+func (cs *CompressedBytesSlice) IsBlockCompressed(iBlock int) bool {
+	return cs.offsets.IsBlockCompressed(iBlock)
 }
 
 func (cs *CompressedBytesSlice) BlockCount() int {
 	return cs.offsets.BlockCount()
 }
 
-func (cs *CompressedBytesSlice) BlockLen(i int) int {
-	return cs.offsets.BlockLen(i)
+// BlockNum returns the block (iBlock) given the index in the uncompressed slice
+func (cs *CompressedBytesSlice) BlockNum(i int) int {
+	return cs.offsets.BlockNum(i)
 }
 
-func (cs *CompressedBytesSlice) BlockDataLen(i int) int {
+func (cs *CompressedBytesSlice) BlockLen(iBlock int) int {
+	return cs.offsets.BlockLen(iBlock)
+}
+
+func (cs *CompressedBytesSlice) BlockDataLen(iBlock int) int {
 	endOffset := cs.lastOffset
-	if i+1 < cs.BlockCount() {
-		endOffset = cs.offsets.BlockFirstValue(i + 1)
+	if iBlock+1 < cs.BlockCount() {
+		endOffset = cs.offsets.BlockFirstValue(iBlock + 1)
 	}
-	return int(endOffset - cs.offsets.BlockFirstValue(i))
+	return int(endOffset - cs.offsets.BlockFirstValue(iBlock))
 }
 
 func (cs CompressedBytesSlice) Append(src [][]byte, encoder any) CompressedBytesSlice {
@@ -303,29 +308,29 @@ func (cs *CompressedBytesSlice) GetBytes(dst []byte, dstOffsets []int64, decoder
 	return dst, dstOffsets
 }
 
-func (cs *CompressedBytesSlice) GetBlock(dst BytesSlice, i int, decoder any) (BytesSlice, int) {
+func (cs *CompressedBytesSlice) GetBlock(dst BytesSlice, iBlock int, decoder any) (BytesSlice, int) {
 	if len(cs.bufBlockOffsets) != len(cs.offsets.blockOffsets) {
 		panic("invalid block offsets")
 	}
 	var blockOffset int
-	dst.buf, dst.offsets, blockOffset = cs.GetBlockBytes(dst.buf, dst.offsets, i, decoder)
+	dst.buf, dst.offsets, blockOffset = cs.GetBlockBytes(dst.buf, dst.offsets, iBlock, decoder)
 	return dst, blockOffset
 }
 
-func (cs *CompressedBytesSlice) GetBlockBytes(dst []byte, dstOffsets []int64, i int, decoder any) ([]byte, []int64, int) {
+func (cs *CompressedBytesSlice) GetBlockBytes(dst []byte, dstOffsets []int64, iBlock int, decoder any) ([]byte, []int64, int) {
 	if len(cs.bufBlockOffsets) != len(cs.offsets.blockOffsets) {
 		panic("invalid block offsets")
 	}
 	if cap(dst) == 0 {
-		dst = make([]byte, 0, cs.BlockDataLen(i))
+		dst = make([]byte, 0, cs.BlockDataLen(iBlock))
 	}
 	if cap(dstOffsets) == 0 {
-		dstOffsets = make([]int64, 0, cs.BlockLen(i))
+		dstOffsets = make([]int64, 0, cs.BlockLen(iBlock))
 	}
 
 	blockOffsetPos := len(dstOffsets)
 	firstBlockOffset := int64(len(dst))
-	dstOffsets, _ = cs.offsets.GetBlock(dstOffsets, i)
+	dstOffsets, _ = cs.offsets.GetBlock(dstOffsets, iBlock)
 	// Fix offsets
 	if delta := dstOffsets[blockOffsetPos] - firstBlockOffset; delta != 0 {
 		for j := blockOffsetPos; j < len(dstOffsets); j++ {
@@ -334,9 +339,9 @@ func (cs *CompressedBytesSlice) GetBlockBytes(dst []byte, dstOffsets []int64, i 
 	}
 
 	// Decompress data
-	if cs.IsBlockCompressed(i) {
+	if cs.IsBlockCompressed(iBlock) {
 		var err error
-		dst, err = decode(dst, cs.blockBuf(i), decoder)
+		dst, err = decode(dst, cs.blockBuf(iBlock), decoder)
 		if err != nil {
 			panic(err)
 		}
@@ -344,14 +349,14 @@ func (cs *CompressedBytesSlice) GetBlockBytes(dst []byte, dstOffsets []int64, i 
 		// last block is uncompressed
 		dst = append(dst, cs.tail...)
 	}
-	return dst, dstOffsets, cs.offsets.blockOffset(i)
+	return dst, dstOffsets, cs.offsets.blockOffset(iBlock)
 }
 
-func (cs *CompressedBytesSlice) blockBuf(i int) []byte {
-	if i+1 < len(cs.bufBlockOffsets) {
-		return cs.buf[cs.bufBlockOffsets[i]:cs.bufBlockOffsets[i+1]]
+func (cs *CompressedBytesSlice) blockBuf(iBlock int) []byte {
+	if iBlock+1 < len(cs.bufBlockOffsets) {
+		return cs.buf[cs.bufBlockOffsets[iBlock]:cs.bufBlockOffsets[iBlock+1]]
 	}
-	return cs.buf[cs.bufBlockOffsets[i]:]
+	return cs.buf[cs.bufBlockOffsets[iBlock]:]
 }
 
 func sameSlice(x, y []byte) bool {
