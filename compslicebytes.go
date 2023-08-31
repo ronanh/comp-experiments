@@ -218,11 +218,17 @@ func (cs CompressedBytesSlice) AppendBytes(src []byte, offsets []int64, encoder 
 }
 
 func (cs *CompressedBytesSlice) AddBytes(src []byte, offsets []int64, encoder any) {
+	if len(offsets) == 0 {
+		return
+	}
 	if len(cs.bufBlockOffsets) != len(cs.offsets.blockOffsets) {
 		panic("invalid block offsets")
 	}
 	prevBlockCount := cs.offsets.BlockCount()
 	withTail := len(cs.offsets.tail) > 0
+
+	// allow src to be a sub-slice of a larger slice (up to the end of the slice)
+	src = src[offsets[0]:]
 
 	if cs.lastOffset != 0 {
 		unmodifiedOffsets := offsets
