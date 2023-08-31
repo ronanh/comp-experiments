@@ -230,11 +230,12 @@ func (cs *CompressedBytesSlice) AddBytes(src []byte, offsets []int64, encoder an
 	// allow src to be a sub-slice of a larger slice (up to the end of the slice)
 	src = src[offsets[0]:]
 
-	if cs.lastOffset != 0 {
+	if cs.lastOffset != 0 || offsets[0] != 0 {
 		unmodifiedOffsets := offsets
+		delta := cs.lastOffset - offsets[0]
 		offsets = make([]int64, len(offsets))
 		for i, v := range unmodifiedOffsets {
-			offsets[i] = cs.lastOffset + v
+			offsets[i] = delta + v
 		}
 	}
 	cs.offsets.Add(offsets)
