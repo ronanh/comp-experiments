@@ -74,10 +74,11 @@ func (cs *CompressedBytesSlice) Import(buf []byte, tail []byte, bufBlockOffsets 
 	cs.tail = tail
 	cs.bufBlockOffsets = bufBlockOffsets
 	cs.offsets = offsets
+	cs.lastOffset = int64(len(tail))
 	// compute last offset
 	if offsets.Len() > 0 {
 		block, _ := offsets.GetBlock(nil, offsets.BlockCount()-1)
-		cs.lastOffset = block[len(block)-1]
+		cs.lastOffset += block[0]
 	}
 }
 
