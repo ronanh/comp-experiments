@@ -23,7 +23,22 @@ func TestCompress(t *testing.T) {
 	checkExpectedInput(t, testInput1, cs)
 
 	cs = cs.Append(testInput2, enc)
-	checkExpectedInput(t, append(testInput1, testInput2...), cs)
+	expected2 := append(testInput1, testInput2...)
+	checkExpectedInput(t, expected2, cs)
+
+	dec, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(1))
+	if err != nil {
+		t.Fatalf("expected no error")
+	}
+	defer dec.Close()
+
+	for i := range expected2 {
+		// check Get(i)
+		got := cs.Get(i, dec)
+		if !bytes.Equal(got, expected2[i]) {
+			t.Fatalf("Get(%d): got %s, expected %s", i, got, expected2[i])
+		}
+	}
 }
 
 func TestCompressBytes(t *testing.T) {
@@ -88,20 +103,20 @@ func checkExpectedInput(t *testing.T, expectedInput [][]byte, res compexperiment
 		dstSlice, off = res.GetBlock(dstSlice, i, dec)
 		for j := 0; j < dstSlice.Len(); j++ {
 			if !bytes.Equal(dstSlice.Value(j), expectedInput[off+j]) {
-				t.Fatalf("got %s, expected %s", dstSlice.Value(j), expectedInput[off+j])
+				t.Fatalf("  got %s\n  expected %s", dstSlice.Value(j), expectedInput[off+j])
 			}
 		}
 		// check block Values
 		values = dstSlice.Values(values[:0])
 		for j, v := range values {
 			if !bytes.Equal(v, expectedInput[off+j]) {
-				t.Fatalf("got %s, expected %s", v, expectedInput[off+j])
+				t.Fatalf("  got %s\n  expected %s", v, expectedInput[off+j])
 			}
 		}
 		// check block Value(i)
 		for j := 0; j < dstSlice.Len(); j++ {
 			if !bytes.Equal(dstSlice.Value(j), dstSlice.Value(j)) {
-				t.Fatalf("got %s, expected %s", dstSlice.Value(j), dstSlice.Value(j))
+				t.Fatalf("  got %s\n  expected %s", dstSlice.Value(j), dstSlice.Value(j))
 			}
 		}
 		// check block ValuesBytes
@@ -113,7 +128,7 @@ func checkExpectedInput(t *testing.T, expectedInput [][]byte, res compexperiment
 					endOff = dstBufOff[j+1]
 				}
 				if !bytes.Equal(dstBuf[dstBufOff[j]:endOff], expectedInput[off+j]) {
-					t.Fatalf("got %s, expected %s", dstBuf[dstBufOff[j]:endOff], expectedInput[off+j])
+					t.Fatalf("  got %s\n  expected %s", dstBuf[dstBufOff[j]:endOff], expectedInput[off+j])
 				}
 			}
 		}
@@ -126,21 +141,21 @@ func checkExpectedInput(t *testing.T, expectedInput [][]byte, res compexperiment
 				endOff = dstBufOff[j+1]
 			}
 			if !bytes.Equal(dstBuf[dstBufOff[j]:endOff], expectedInput[off+j]) {
-				t.Fatalf("got %s, expected %s", dstBuf[dstBufOff[j]:endOff], expectedInput[off+j])
+				t.Fatalf("  got %s\n  expected %s", dstBuf[dstBufOff[j]:endOff], expectedInput[off+j])
 			}
 		}
 	}
 
 	// Decompression in one go
 	dstSlice.Reset()
-	dstSlice = res.Get(dstSlice, dec)
+	dstSlice = res.GetAll(dstSlice, dec)
 	// check len
 	if dstSlice.Len() != len(expectedInput) {
-		t.Fatalf("got %d, expected %d", dstSlice.Len(), len(expectedInput))
+		t.Fatalf("  got %d\n  expected %d", dstSlice.Len(), len(expectedInput))
 	}
 	for i := 0; i < dstSlice.Len(); i++ {
 		if !bytes.Equal(dstSlice.Value(i), expectedInput[i]) {
-			t.Fatalf("got %s, expected %s", dstSlice.Value(i), expectedInput[i])
+			t.Fatalf("  got %s\n  expected %s", dstSlice.Value(i), expectedInput[i])
 		}
 	}
 
@@ -156,7 +171,7 @@ func checkExpectedInput(t *testing.T, expectedInput [][]byte, res compexperiment
 			endOff = dstBufOff[i+1]
 		}
 		if !bytes.Equal(dstBuf[dstBufOff[i]:endOff], expectedInput[i]) {
-			t.Fatalf("got %s, expected %s", dstBuf[dstBufOff[i]:endOff], expectedInput[i])
+			t.Fatalf("  got %s\n  expected %s", dstBuf[dstBufOff[i]:endOff], expectedInput[i])
 		}
 	}
 }
@@ -207,6 +222,34 @@ func TestImportExportBytesSlice(t *testing.T) {
 	cs2.Import(cs.Export())
 
 	checkExpectedInput(t, testInput1, cs2)
+}
+
+func TestTruncateBytesSlice(t *testing.T) {
+	testInput1 := genTestInputs(1000)
+	var cs compexperiments.CompressedBytesSlice
+
+	enc, err := zstd.NewWriter(nil, zstd.WithEncoderConcurrency(1), zstd.WithEncoderLevel(zstd.SpeedDefault))
+	if err != nil {
+		t.Fatalf("expected no error")
+	}
+	defer enc.Close()
+	dec, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(1))
+	if err != nil {
+		t.Fatalf("expected no error")
+	}
+	defer dec.Close()
+
+	cs = cs.Append(testInput1, enc)
+
+	for i := range testInput1 {
+		// t.Logf("truncate %d", i)
+		cs2 := cs
+		cs2.Truncate(i, dec)
+		cs2.AddOne([]byte("test"), enc)
+
+		checkExpectedInput(t, append(testInput1[:i:i], []byte("test")), cs2)
+	}
+
 }
 
 // generate random strings (alphanum) of length 0-1000

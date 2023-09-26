@@ -302,7 +302,16 @@ func (cs *CompressedSlice[T]) addBlock(block []T, minNtz int) {
 
 }
 
-func (cs *CompressedSlice[T]) Get(dst []T) []T {
+func (cs *CompressedSlice[T]) Get(i int) T {
+	iBlock := cs.BlockNum(i)
+	if !cs.IsBlockCompressed(iBlock) {
+		return cs.tail[i-cs.blockOffset(iBlock)]
+	}
+	block, blockOff := cs.GetBlock(nil, iBlock)
+	return block[i-blockOff]
+}
+
+func (cs *CompressedSlice[T]) GetAll(dst []T) []T {
 	if cap(dst) == 0 {
 		dst = make([]T, 0, cs.Len())
 	}
@@ -344,6 +353,42 @@ func (cs *CompressedSlice[T]) GetBlock(dst []T, iBlock int) ([]T, int) {
 		return append(dst, cs.tail...), cs.blockOffset(iBlock)
 	}
 	panic("invalid block index")
+}
+
+func (cs *CompressedSlice[T]) Truncate(i int) {
+	if i == 0 {
+		cs.buf = nil
+		cs.tail = nil
+		cs.blockOffsets = nil
+		if cs.minMax != nil {
+			cs.minMax = make([]minMax[T], 0)
+		}
+		return
+	}
+	if i >= cs.Len() {
+		return
+	}
+	iBlock := cs.BlockNum(i)
+	tailLen := i - cs.blockOffset(iBlock)
+	if iBlock < len(cs.blockOffsets) {
+		if tailLen > 0 {
+			// extract tail from compressed iBlock
+			// and truncate to tailLen
+			cs.tail, _ = cs.GetBlock(nil, iBlock)
+			cs.tail = cs.tail[:tailLen:tailLen]
+		} else {
+			cs.tail = nil
+		}
+		// truncate compressed block
+		cs.buf = cs.buf[:cs.blockOffsets[iBlock]:cs.blockOffsets[iBlock]]
+		cs.blockOffsets = cs.blockOffsets[:iBlock:iBlock]
+		if cs.minMax != nil {
+			cs.minMax = cs.minMax[:iBlock:iBlock]
+		}
+	} else {
+		// truncate tail
+		cs.tail = cs.tail[:tailLen:tailLen]
+	}
 }
 
 func (cs *CompressedSlice[T]) blockOffset(iBlock int) int {

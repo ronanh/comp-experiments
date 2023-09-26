@@ -18,7 +18,7 @@ func TestCompressedIntBufferBasic(t *testing.T) {
 	if cs.Len() != len(testInput) {
 		t.Fatalf("expected same len")
 	}
-	for i, v := range cs.Get(nil) {
+	for i, v := range cs.GetAll(nil) {
 		if v != testInput[i] {
 			t.Fatalf("expected same value, got %d, expected %d", v, testInput[i])
 		}
@@ -214,8 +214,15 @@ func testCompressedBuffer[T compexperiments.PackType](bufs [][]T, withMinMax boo
 	}
 
 	// check Decompress
-	if gotDecompressed := cb.Get(nil); !reflect.DeepEqual(gotDecompressed, wantDecompressed) {
+	if gotDecompressed := cb.GetAll(nil); !reflect.DeepEqual(gotDecompressed, wantDecompressed) {
 		t.Errorf("cb.Decompress() = %v, want %v", gotDecompressed, wantDecompressed)
+	}
+
+	// check Get
+	for i := 0; i < wantLen; i++ {
+		if got := cb.Get(i); got != wantDecompressed[i] {
+			t.Errorf("cb.Get(%d) = %v, want %v", i, got, wantDecompressed[i])
+		}
 	}
 
 	// check iteration
@@ -261,8 +268,18 @@ func testCompressedBuffer[T compexperiments.PackType](bufs [][]T, withMinMax boo
 	for _, v := range wantDecompressed {
 		cb2 = cb2.AppendOne(v)
 	}
-	if gotDecompressed := cb2.Get(nil); !reflect.DeepEqual(gotDecompressed, wantDecompressed) {
+	if gotDecompressed := cb2.GetAll(nil); !reflect.DeepEqual(gotDecompressed, wantDecompressed) {
 		t.Errorf("cb2.Decompress() = %v, want %v", gotDecompressed, wantDecompressed)
+	}
+
+	// check Truncate
+	for i := range wantDecompressed {
+		cb3 := cb2
+		cb3.Truncate(i)
+		cb3.AddOne(456)
+		if gotDecompressed := cb3.GetAll(nil); !reflect.DeepEqual(gotDecompressed, append(wantDecompressed[:i:i], 456)) {
+			t.Errorf("Truncate(%d) cb3.Decompress() = %v, want %v", i, gotDecompressed, append(wantDecompressed[:i:i], 456))
+		}
 	}
 
 }
@@ -393,7 +410,7 @@ func testCompressBufferIntFull[T compexperiments.PackType](t *testing.T) {
 				var cb compexperiments.CompressedSlice[T]
 				cb = cb.Append(testInput)
 				// decompress
-				got := cb.Get(nil)
+				got := cb.GetAll(nil)
 
 				// check decompressed
 				if !checkEqual(got, testInput, 1) {
@@ -441,7 +458,7 @@ func testCompressFloat[T float32 | float64](t *testing.T, name string, gen func(
 		} else {
 			cb = cb.Append(testInput)
 		}
-		got := cb.Get(nil)
+		got := cb.GetAll(nil)
 		t.Logf("bits per value: %f", float64(cb.CompressedSize())*8/float64(len(testInput)))
 
 		// check decompressed
@@ -458,7 +475,7 @@ func testCompressFloat[T float32 | float64](t *testing.T, name string, gen func(
 				cb2 = cb2.AppendOne(v)
 			}
 		}
-		got = cb2.Get(nil)
+		got = cb2.GetAll(nil)
 		if !checkEqual(got, testInput, precision) {
 			t.Errorf("cb.AppendOne() = %v\n--- Want %v", got, testInput)
 		}
@@ -472,7 +489,7 @@ func TestImportExportSlice(t *testing.T) {
 
 	cs2.Import(cs.Export())
 
-	for i, v := range cs2.Get(nil) {
+	for i, v := range cs2.GetAll(nil) {
 		if v != testInput[i] {
 			t.Fatalf("expected same value, got %d, expected %d", v, testInput[i])
 		}

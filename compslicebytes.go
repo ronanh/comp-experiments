@@ -288,7 +288,34 @@ func (cp *CompressedBytesSlice) addBlock(block []byte, encoder any) {
 	}
 }
 
-func (cs *CompressedBytesSlice) Get(dst BytesSlice, decoder any) BytesSlice {
+func (cs *CompressedBytesSlice) Get(i int, decoder any) []byte {
+	if len(cs.bufBlockOffsets) != len(cs.offsets.blockOffsets) {
+		panic("invalid block offsets")
+	}
+	iBlock := cs.BlockNum(i)
+	if !cs.IsBlockCompressed(iBlock) {
+		blockOff := cs.offsets.blockOffset(iBlock)
+		var endOff int64
+		tailOff := cs.offsets.tail[0]
+		if i-blockOff+1 < len(cs.offsets.tail) {
+			endOff = cs.offsets.tail[i-blockOff+1] - tailOff
+		} else {
+			endOff = int64(len(cs.tail))
+		}
+		return cs.tail[cs.offsets.tail[i-blockOff]-tailOff : endOff : endOff]
+	}
+	// get from compressed block
+	dst, dstOff, blockOff := cs.GetBlockBytes(nil, nil, iBlock, decoder)
+	var endOff int64
+	if i-blockOff+1 < len(dstOff) {
+		endOff = dstOff[i-blockOff+1]
+	} else {
+		endOff = int64(len(dst))
+	}
+	return dst[dstOff[i-blockOff]:endOff:endOff]
+}
+
+func (cs *CompressedBytesSlice) GetAll(dst BytesSlice, decoder any) BytesSlice {
 	if len(cs.bufBlockOffsets) != len(cs.offsets.blockOffsets) {
 		panic("invalid block offsets")
 	}
@@ -362,6 +389,59 @@ func (cs *CompressedBytesSlice) blockBuf(iBlock int) []byte {
 		return cs.buf[cs.bufBlockOffsets[iBlock]:cs.bufBlockOffsets[iBlock+1]]
 	}
 	return cs.buf[cs.bufBlockOffsets[iBlock]:]
+}
+
+func (cs *CompressedBytesSlice) Truncate(i int, decoder any) {
+	if len(cs.bufBlockOffsets) != len(cs.offsets.blockOffsets) {
+		panic("invalid block offsets")
+	}
+	if i == 0 {
+		cs.buf = nil
+		cs.tail = nil
+		cs.bufBlockOffsets = nil
+		cs.offsets.Truncate(0)
+		cs.lastOffset = 0
+		return
+	}
+	if i >= cs.Len() {
+		return
+	}
+
+	iBlock := cs.BlockNum(i)
+	blockOff := cs.offsets.blockOffset(iBlock)
+	if !cs.IsBlockCompressed(iBlock) {
+		// only need to truncate tail
+		var endOff int64
+		tailOff := cs.offsets.tail[0]
+		if i-blockOff < len(cs.offsets.tail) {
+			endOff = cs.offsets.tail[i-blockOff] - tailOff
+		} else {
+			endOff = int64(len(cs.tail))
+		}
+		cs.tail = cs.tail[:endOff:endOff]
+	} else {
+		if i == blockOff {
+			// no tail after truncate
+			cs.tail = nil
+		} else {
+			// get truncated tail from compressed block
+			dst, dstOff, blockOff := cs.GetBlockBytes(nil, nil, iBlock, decoder)
+			var endOff int64
+			if i-blockOff < len(dstOff) {
+				endOff = dstOff[i-blockOff]
+			} else {
+				endOff = int64(len(dst))
+			}
+			cs.tail = dst[:endOff:endOff]
+		}
+		// truncate compressed blocks
+		cs.buf = cs.buf[:cs.bufBlockOffsets[iBlock]:cs.bufBlockOffsets[iBlock]]
+		cs.bufBlockOffsets = cs.bufBlockOffsets[:iBlock:iBlock]
+	}
+
+	// update lastOffset and truncate offsets
+	cs.lastOffset = cs.offsets.Get(i)
+	cs.offsets.Truncate(i)
 }
 
 func sameSlice(x, y []byte) bool {
