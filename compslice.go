@@ -25,6 +25,21 @@ type CompressedSlice[T PackType] struct {
 func (cs *CompressedSlice[T]) Import(buf []uint64, tail []T, blockOffsets []int64, minMax []minMax[T]) {
 	cs.buf = buf
 	cs.tail = tail
+	if len(tail) > 0 {
+		v := tail[0]
+		if constTail := getConstTail(v); constTail != nil {
+			// tail may be a constant
+			for i := 1; i < len(tail); i++ {
+				if tail[i] != v {
+					constTail = nil
+					break
+				}
+			}
+			if constTail != nil {
+				cs.tail = constTail[:len(tail):len(tail)]
+			}
+		}
+	}
 	cs.blockOffsets = blockOffsets
 }
 
@@ -221,12 +236,18 @@ func (cs *CompressedSlice[T]) add(src []T, minNtz int) {
 			nbGroups = MaxGroups
 		}
 		if len(cs.tail) > 0 {
-			appendTailCount := groupSize*nbGroups - len(cs.tail)
-			if appendTailCount > len(src) {
-				appendTailCount = len(src)
+			appendTailLen := groupSize*nbGroups - len(cs.tail)
+			if appendTailLen > len(src) {
+				appendTailLen = len(src)
 			}
-			cs.tail = append(cs.tail, src[:appendTailCount]...)
-			src = src[appendTailCount:]
+
+			if constTail := cs.getConstTailForSlice(src[:appendTailLen]); constTail != nil {
+				cs.tail = constTail[: len(cs.tail)+appendTailLen : len(cs.tail)+appendTailLen]
+			} else {
+				cs.tail = append(cs.tail, src[:appendTailLen]...)
+			}
+			// cs.tail = append(cs.tail, src[:appendTailLen]...)
+			src = src[appendTailLen:]
 			if len(cs.tail) == groupSize*nbGroups {
 				// tail is full, compress it
 				cs.addBlock(cs.tail, minNtz)
@@ -238,7 +259,12 @@ func (cs *CompressedSlice[T]) add(src []T, minNtz int) {
 			src = src[groupSize*nbGroups:]
 		} else {
 			// append to tail
-			cs.tail = append(cs.tail, src...)
+			if constTail := cs.getConstTailForSlice(src); constTail != nil {
+				cs.tail = constTail[:len(src):len(src)]
+			} else {
+				cs.tail = append(cs.tail, src...)
+			}
+			// cs.tail = append(cs.tail, src...)
 			src = nil
 		}
 	}
@@ -249,7 +275,11 @@ func (cs *CompressedSlice[T]) addOne(src T, minNtz int) {
 	if nbGroups > MaxGroups {
 		nbGroups = MaxGroups
 	}
-	cs.tail = append(cs.tail, src)
+	if constTail := cs.getConstTailForV(src); constTail != nil {
+		cs.tail = constTail[: len(cs.tail)+1 : len(cs.tail)+1]
+	} else {
+		cs.tail = append(cs.tail, src)
+	}
 	if len(cs.tail) == groupSize*nbGroups {
 		// tail is full, compress it
 		cs.addBlock(cs.tail, minNtz)
@@ -417,7 +447,64 @@ func (cs CompressedSlice[T]) fractionSize() int {
 	}
 }
 
+func (cs CompressedSlice[T]) getConstTailForV(v T) *[MaxGroups * groupSize]T {
+	if len(cs.tail) != cap(cs.tail) || (len(cs.tail) > 0 && cs.tail[0] != v) {
+		// not a constant tail
+		return nil
+	}
+	if constTail := getConstTail(v); constTail != nil && unsafe.SliceData(cs.tail) == &constTail[0] {
+		return constTail
+	}
+	return nil
+}
+
+func (cs CompressedSlice[T]) getConstTailForSlice(src []T) *[MaxGroups * groupSize]T {
+	v := src[0]
+	if len(cs.tail) != cap(cs.tail) || (len(cs.tail) > 0 && cs.tail[0] != v) {
+		// not a constant tail
+		return nil
+	}
+	constTail := getConstTail(v)
+	if constTail == nil || unsafe.SliceData(cs.tail) != &constTail[0] {
+		return constTail
+	}
+	for _, v2 := range src {
+		if v != v2 {
+			// not a constant tail
+			return nil
+		}
+	}
+	return constTail
+}
+
 type minMax[T PackType] struct {
 	min T
 	max T
+}
+
+var (
+	tailConsts []struct {
+		v    any
+		tail unsafe.Pointer
+	}
+)
+
+func AddTailConst[T PackType](v T) {
+	tail := new([MaxGroups * groupSize]T)
+	for i := range tail {
+		tail[i] = v
+	}
+	tailConsts = append(tailConsts, struct {
+		v    any
+		tail unsafe.Pointer
+	}{v, unsafe.Pointer(tail)})
+}
+
+func getConstTail[T PackType](v T) *[MaxGroups * groupSize]T {
+	for _, tc := range tailConsts {
+		if tc.v == any(v) {
+			return (*[MaxGroups * groupSize]T)(tc.tail)
+		}
+	}
+	return nil
 }
