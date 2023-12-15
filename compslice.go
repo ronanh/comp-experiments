@@ -391,7 +391,7 @@ func (cs *CompressedSlice[T]) LShiftBlocks(nBlocks int) {
 				nbGroupsPerBlock = MaxGroups
 			}
 		}
-		if len(cs.tail) > groupSize*nbGroupsPerBlock {
+		if len(cs.tail) >= groupSize*nbGroupsPerBlock {
 			buf := cs.tail
 			cs.tail = nil
 			cs.add(buf, 0)
