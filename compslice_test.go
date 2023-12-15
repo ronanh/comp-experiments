@@ -284,6 +284,56 @@ func testCompressedBuffer[T compexperiments.PackType](bufs [][]T, withMinMax boo
 
 }
 
+func TestLShift(t *testing.T) {
+	buf := genBuf[int](0, 10)
+	var cb compexperiments.CompressedSlice[int]
+	cb = cb.Append(buf)
+
+	cb.LShiftBlocks(1)
+	if got := cb.GetAll(nil); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("cb.GetAll() = %v\n  want %v", got, []int{})
+	}
+
+	buf = genBuf[int](0, 64)
+	cb = cb.Append(buf)
+	cb.LShiftBlocks(1)
+	if got := cb.GetAll(nil); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("cb.GetAll() = %v\n  want %v", got, []int{})
+	}
+	buf = genBuf[int](0, 74)
+	cb = cb.Append(buf)
+	cb.LShiftBlocks(1)
+	want := buf[64:]
+	if got := cb.GetAll(nil); !reflect.DeepEqual(got, want) {
+		t.Errorf("cb.GetAll() = %v\n  want %v", got, want)
+	}
+
+	cb = compexperiments.CompressedSlice[int]{}
+	buf = genBuf[int](0, 15_000)
+	cb = cb.Append(buf[:1_000])
+	cb.LShiftBlocks(1)
+	cb = cb.Append(buf[1_000:2000])
+	cb.LShiftBlocks(2)
+	cb = cb.Append(buf[2_000:3000])
+	cb.LShiftBlocks(3)
+	cb = cb.Append(buf[3_000:5000])
+	cb.LShiftBlocks(4)
+	cb = cb.Append(buf[5_000:])
+	cb.LShiftBlocks(1)
+	cb.LShiftBlocks(8)
+	cb.LShiftBlocks(10)
+	off := 64 + 128 + 192 + 256 + 320 + 384 + 448 + 512 + 21*512
+	maxlen := len(buf)
+	if got, want := cb.GetAll(nil), buf[off:maxlen]; !reflect.DeepEqual(got, want) {
+		t.Errorf("cb.GetAll() = %v\n  want %v", got, want)
+	}
+	for i := range buf[off:maxlen] {
+		if got, want := cb.Get(i), buf[off+i]; got != want {
+			t.Errorf("cb.Get(%d) = %v\n  want %v", i, got, want)
+		}
+	}
+}
+
 func TestCompressBufferConstant(t *testing.T) {
 	var testInput []int64
 	for i := 0; i < 64; i++ {

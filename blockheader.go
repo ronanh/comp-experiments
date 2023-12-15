@@ -18,7 +18,7 @@ func (bh BlockHeader) GroupCount() int {
 
 // AddGroup adds a group of bits to the block header.
 // bitlen is the number of bits in the group, and ntz is the number of trailing zeros.
-// bitlen and ntz are stored in the header as 6-bit values.
+// bitlen and ntz are stored in the header as 7 and 6-bit values.
 // adding a group increases the number of groups in the header by 1.
 func (bh BlockHeader) AddGroup(bitlen, ntz int) BlockHeader {
 	for i, v := range bh {

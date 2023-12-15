@@ -1,6 +1,7 @@
 package compexperiments
 
 import (
+	"fmt"
 	"unsafe"
 )
 
@@ -108,34 +109,37 @@ func (cs *CompressedSlice[T]) BlockCount() int {
 
 // BlockNum returns the block (iBlock) given the index in the uncompressed slice
 func (cs *CompressedSlice[T]) BlockNum(i int) int {
-	// is it in the tail?
-	ln := cs.Len()
-	if i >= ln-len(cs.tail) {
-		return len(cs.blockOffsets)
-	}
-	// is it in the first blocks (0 to MaxGroups-1)?
-	var groupOffset int
-	for g := 1; g <= MaxGroups; g++ {
-		groupOffset += g * groupSize
-		if i < groupOffset {
-			return g - 1
+	var (
+		iBlock   int
+		groupNum int = i / groupSize
+	)
+	if len(cs.blockOffsets) > 0 {
+		nbGroupsPerBlock := BlockHeader(cs.buf[1:3]).GroupCount()
+		for groupNum >= nbGroupsPerBlock && nbGroupsPerBlock < MaxGroups {
+			groupNum -= nbGroupsPerBlock
+			nbGroupsPerBlock++
+			iBlock++
 		}
 	}
-	// is it in the other blocks?
-	return MaxGroups + (i-groupOffset)/(MaxGroups*groupSize)
+	if groupNum < 0 {
+		groupNum = 0
+	}
+	return iBlock + groupNum/MaxGroups
 }
 
 func (cs *CompressedSlice[T]) BlockLen(iBlock int) int {
-	if iBlock < len(cs.blockOffsets) {
-		if iBlock < MaxGroups {
-			return (iBlock + 1) * groupSize
+	if iBlock >= len(cs.blockOffsets) {
+		if iBlock > len(cs.blockOffsets) || len(cs.tail) == 0 {
+			panic("invalid block index")
 		}
-		return MaxGroups * groupSize
-	}
-	if iBlock == len(cs.blockOffsets) && len(cs.tail) > 0 {
 		return len(cs.tail)
 	}
-	panic("invalid block index")
+	nbGroupsPerBlock := BlockHeader(cs.buf[1:3]).GroupCount()
+	for iBlock > 0 && nbGroupsPerBlock < MaxGroups {
+		nbGroupsPerBlock++
+		iBlock--
+	}
+	return nbGroupsPerBlock * groupSize
 }
 
 func (cs *CompressedSlice[T]) BlockFirstValue(iBlock int) T {
@@ -224,21 +228,24 @@ func (cs *CompressedSlice[T]) AddOneLossy(src T, maxBits int) {
 }
 
 func (cs *CompressedSlice[T]) add(src []T, minNtz int) {
-	// Compute nbGroups:
-	// first block should have 1 group
-	// second block should have 2 groups
-	// third block should have 3 groups
-	// later blocks should have 4 groups
-	nbGroups := len(cs.blockOffsets)
+	nbGroupsPerBlock := 1
+	if len(cs.blockOffsets) > 0 {
+		gc := BlockHeader(cs.buf[1:3]).GroupCount()
+		if gc > MaxGroups || gc < 1 {
+			panic(fmt.Errorf("invalid GroupCount: %d", gc))
+		}
+		nbGroupsPerBlock = gc + len(cs.blockOffsets)
+	}
 	for len(src) > 0 {
-		nbGroups++
-		if nbGroups > MaxGroups {
-			nbGroups = MaxGroups
+		if nbGroupsPerBlock > MaxGroups {
+			nbGroupsPerBlock = MaxGroups
 		}
 		if len(cs.tail) > 0 {
-			appendTailLen := groupSize*nbGroups - len(cs.tail)
+			appendTailLen := groupSize*nbGroupsPerBlock - len(cs.tail)
 			if appendTailLen > len(src) {
 				appendTailLen = len(src)
+			} else if appendTailLen < 0 {
+				panic(fmt.Errorf("appendTailLen:%d < 0, len(cs.tail): %d, nbGroupsPerBlock: %d, nbCompressedBlocks: %d, len(src): %d", appendTailLen, len(cs.tail), nbGroupsPerBlock, len(cs.blockOffsets), len(src)))
 			}
 
 			if constTail := cs.getConstTailForSlice(src[:appendTailLen]); constTail != nil {
@@ -248,15 +255,15 @@ func (cs *CompressedSlice[T]) add(src []T, minNtz int) {
 			}
 			// cs.tail = append(cs.tail, src[:appendTailLen]...)
 			src = src[appendTailLen:]
-			if len(cs.tail) == groupSize*nbGroups {
+			if len(cs.tail) == groupSize*nbGroupsPerBlock {
 				// tail is full, compress it
 				cs.addBlock(cs.tail, minNtz)
 				cs.tail = nil
 			}
-		} else if len(src) >= groupSize*nbGroups {
+		} else if len(src) >= groupSize*nbGroupsPerBlock {
 			// compress a full block
-			cs.addBlock(src[:groupSize*nbGroups], minNtz)
-			src = src[groupSize*nbGroups:]
+			cs.addBlock(src[:groupSize*nbGroupsPerBlock], minNtz)
+			src = src[groupSize*nbGroupsPerBlock:]
 		} else {
 			// append to tail
 			if constTail := cs.getConstTailForSlice(src); constTail != nil {
@@ -267,31 +274,42 @@ func (cs *CompressedSlice[T]) add(src []T, minNtz int) {
 			// cs.tail = append(cs.tail, src...)
 			src = nil
 		}
+		nbGroupsPerBlock++
 	}
 }
 
 func (cs *CompressedSlice[T]) addOne(src T, minNtz int) {
-	nbGroups := len(cs.blockOffsets) + 1
-	if nbGroups > MaxGroups {
-		nbGroups = MaxGroups
+	nbGroupsPerBlock := 1
+	if len(cs.blockOffsets) > 0 {
+		nbGroupsPerBlock = BlockHeader(cs.buf[1:3]).GroupCount() + len(cs.blockOffsets)
+		if nbGroupsPerBlock > MaxGroups {
+			nbGroupsPerBlock = MaxGroups
+		}
 	}
+
+	var hasConstTail bool
 	if constTail := cs.getConstTailForV(src); constTail != nil {
 		cs.tail = constTail[: len(cs.tail)+1 : len(cs.tail)+1]
+		hasConstTail = true
 	} else {
 		cs.tail = append(cs.tail, src)
 	}
-	if len(cs.tail) == groupSize*nbGroups {
+	if len(cs.tail) == groupSize*nbGroupsPerBlock {
 		// tail is full, compress it
 		cs.addBlock(cs.tail, minNtz)
-		// reset tail
-		// the client is using addOne to add one value at a time
-		// so it's better to alloc preemtively a new tail to avoid
-		// reallocations
-		nbGroups++
-		if nbGroups > MaxGroups {
-			nbGroups = MaxGroups
+		if hasConstTail {
+			cs.tail = nil
+		} else {
+			// reset tail
+			// the client is using addOne to add one value at a time
+			// so it's better to alloc preemtively a new tail to avoid
+			// reallocations
+			nbGroupsPerBlock++
+			if nbGroupsPerBlock > MaxGroups {
+				nbGroupsPerBlock = MaxGroups
+			}
+			cs.tail = make([]T, 0, groupSize*nbGroupsPerBlock)
 		}
-		cs.tail = make([]T, 0, groupSize*nbGroups)
 	}
 }
 
@@ -329,7 +347,57 @@ func (cs *CompressedSlice[T]) addBlock(block []T, minNtz int) {
 	}
 	*(*BlockHeader)(cs.buf[BlockHeaderPos+1:]) = bh
 	cs.blockOffsets = append(cs.blockOffsets, BlockHeaderPos)
+}
 
+func (cs *CompressedSlice[T]) LShiftBlocks(nBlocks int) {
+	if nBlocks < 0 {
+		panic("nBlocks should be positive")
+	}
+	if nBlocks == len(cs.blockOffsets)+1 && len(cs.tail) > 0 {
+		// truncate tail
+		cs.tail = nil
+		nBlocks--
+	}
+	if nBlocks == 0 {
+		return
+	}
+	if nBlocks > len(cs.blockOffsets) {
+		panic("nBlocks too large")
+	}
+
+	// copy+truncate to shift blocks
+	shiftBlockOffset := int64(len(cs.buf))
+	if nBlocks < len(cs.blockOffsets) {
+		shiftBlockOffset = cs.blockOffsets[nBlocks]
+	}
+	copy(cs.buf, cs.buf[shiftBlockOffset:])
+	cs.buf = cs.buf[:len(cs.buf)-int(shiftBlockOffset)]
+	copy(cs.blockOffsets, cs.blockOffsets[nBlocks:])
+	cs.blockOffsets = cs.blockOffsets[:len(cs.blockOffsets)-nBlocks]
+	for i := range cs.blockOffsets {
+		cs.blockOffsets[i] -= shiftBlockOffset
+	}
+	if cs.minMax != nil {
+		copy(cs.minMax, cs.minMax[nBlocks:])
+		cs.minMax = cs.minMax[:len(cs.minMax)-nBlocks]
+	}
+	if len(cs.tail) > 0 {
+		// check that tail is not bigger than next block
+		// if so, re-add tail to ensure proper state
+		nbGroupsPerBlock := 1
+		if len(cs.blockOffsets) > 0 {
+			nbGroupsPerBlock = BlockHeader(cs.buf[1:3]).GroupCount() + len(cs.blockOffsets)
+			if nbGroupsPerBlock > MaxGroups {
+				nbGroupsPerBlock = MaxGroups
+			}
+		}
+		if len(cs.tail) > groupSize*nbGroupsPerBlock {
+			buf := cs.tail
+			cs.tail = nil
+			cs.add(buf, 0)
+		}
+
+	}
 }
 
 func (cs *CompressedSlice[T]) Get(i int) T {
@@ -422,14 +490,17 @@ func (cs *CompressedSlice[T]) Truncate(i int) {
 }
 
 func (cs *CompressedSlice[T]) blockOffset(iBlock int) int {
-	var res int
-	for g := 1; g < MaxGroups; g++ {
-		if g > iBlock {
-			return res
+	var nbGroupsTotal int
+	if len(cs.blockOffsets) > 0 {
+		nbGroupsPerBlock := BlockHeader(cs.buf[1:3]).GroupCount()
+		for iBlock > 0 && nbGroupsPerBlock < MaxGroups {
+			nbGroupsTotal += nbGroupsPerBlock
+			nbGroupsPerBlock++
+			iBlock--
 		}
-		res += g * groupSize
 	}
-	return res + (iBlock-MaxGroups+1)*MaxGroups*groupSize
+	nbGroupsTotal += iBlock * MaxGroups
+	return nbGroupsTotal * groupSize
 }
 
 func (cs CompressedSlice[T]) fractionSize() int {
