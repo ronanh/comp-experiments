@@ -444,6 +444,10 @@ func (cs *CompressedBytesSlice) Truncate(i int, decoder any) {
 	cs.offsets.Truncate(i)
 }
 
+func (cs *CompressedBytesSlice) RemainingCapBytes() int {
+	return cap(cs.buf) - len(cs.buf) + cap(cs.tail) - len(cs.tail)
+}
+
 func sameSlice(x, y []byte) bool {
 	return len(x) == len(y) && &x[0] == &y[0]
 }

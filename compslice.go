@@ -489,6 +489,10 @@ func (cs *CompressedSlice[T]) Truncate(i int) {
 	}
 }
 
+func (cs *CompressedSlice[T]) RemainingCapBytes() int {
+	return cap(cs.buf) - len(cs.buf) + (cap(cs.tail)-len(cs.tail))*int(unsafe.Sizeof(T(0)))
+}
+
 func (cs *CompressedSlice[T]) blockOffset(iBlock int) int {
 	var nbGroupsTotal int
 	if len(cs.blockOffsets) > 0 {
