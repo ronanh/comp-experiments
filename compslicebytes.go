@@ -391,6 +391,17 @@ func (cs *CompressedBytesSlice) blockBuf(iBlock int) []byte {
 	return cs.buf[cs.bufBlockOffsets[iBlock]:]
 }
 
+// DeepCopy returns a deep copy of the compressed bytes slice
+// it is mainly used to be used in cunjunction with Truncate
+func (cs *CompressedBytesSlice) DeepCopy() (copy CompressedBytesSlice) {
+	copy.buf = append(copy.buf, cs.buf...)
+	copy.tail = append(copy.tail, cs.tail...)
+	copy.bufBlockOffsets = append(copy.bufBlockOffsets, cs.bufBlockOffsets...)
+	copy.offsets = cs.offsets.DeepCopy()
+	copy.lastOffset = cs.lastOffset
+	return
+}
+
 func (cs *CompressedBytesSlice) Truncate(i int, decoder any) {
 	if len(cs.bufBlockOffsets) != len(cs.offsets.blockOffsets) {
 		panic("invalid block offsets")

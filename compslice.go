@@ -453,6 +453,18 @@ func (cs *CompressedSlice[T]) GetBlock(dst []T, iBlock int) ([]T, int) {
 	panic("invalid block index")
 }
 
+// DeepCopy returns a deep copy of the CompressedSlice
+// mainly designed to be used in conjunction Truncate
+func (cs *CompressedSlice[T]) DeepCopy() (copy CompressedSlice[T]) {
+	copy.blockOffsets = append(copy.blockOffsets, cs.blockOffsets...)
+	copy.buf = append(copy.buf, cs.buf...)
+	copy.tail = append(copy.tail, cs.tail...)
+	if cs.minMax != nil {
+		copy.minMax = append(copy.minMax, cs.minMax...)
+	}
+	return
+}
+
 func (cs *CompressedSlice[T]) Truncate(i int) {
 	if i == 0 {
 		cs.buf = nil
